@@ -1,4 +1,3 @@
-import math
 import os
 import queue
 import time
@@ -16,6 +15,9 @@ from protocol import (
     DEFAULT_BAUD,
     DEFAULT_DURATION,
     DEFAULT_RESOLUTION,
+    FRAME_HEIGHT,
+    FRAME_SIZE,
+    FRAME_WIDTH,
     JPEG_QUALITY,
     PREVIEW_SIZE,
     RESOLUTIONS,
@@ -50,7 +52,7 @@ class MainWindow:
         self.capture_next_idx = 1
         self.capture_save_dir = ""
         self.capture_w = 324
-        self.capture_h = 324
+        self.capture_h = 244
         self.auto_resize = False
         self._capture_timer_id = None
         self._countdown_after_id = None
@@ -452,37 +454,31 @@ class MainWindow:
                 raw = self.serial.frame_queue.get_nowait()
                 if self.capturing:
                     self._process_frame(raw)
+                else:
+                    self._preview_frame(raw)
         except queue.Empty:
             pass
-
-        if not self.capturing:
-            while True:
-                try:
-                    self.serial.frame_queue.get_nowait()
-                except queue.Empty:
-                    break
 
         self.root.after(POLL_INTERVAL_MS, self._poll_frames)
 
     def _process_frame(self, raw):
-        total = len(raw)
-        side = int(math.isqrt(total))
-
-        if side * side != total:
-            self._log(f"⚠ Non-square frame: {total} bytes, skipped")
+        if len(raw) != FRAME_SIZE:
+            self._log(f"⚠ Unexpected frame size: {len(raw)} bytes (expected {FRAME_SIZE}), skipped")
             return
 
         try:
-            img = Image.frombytes("L", (side, side), raw)
+            img = Image.frombytes("L", (FRAME_WIDTH, FRAME_HEIGHT), raw)
 
-            if self.auto_resize and (side != self.capture_w or side != self.capture_h):
-                img = img.resize((self.capture_w, self.capture_h), Image.LANCZOS)
-            elif side != self.capture_w or side != self.capture_h:
-                self._log(f"⚠ Frame {side}×{side} ≠ target {self.capture_w}×{self.capture_h}")
+            saved = img
+            if self.capture_w != FRAME_WIDTH or self.capture_h != FRAME_HEIGHT:
+                if self.auto_resize:
+                    saved = img.resize((self.capture_w, self.capture_h), Image.LANCZOS)
+                else:
+                    self._log(f"⚠ Frame {self.capture_w}×{self.capture_h} ≠ sensor {FRAME_WIDTH}×{FRAME_HEIGHT}")
 
             filename = f"{self.capture_next_idx:04d}.jpg"
             filepath = os.path.join(self.capture_save_dir, filename)
-            img.save(filepath, "JPEG", quality=JPEG_QUALITY)
+            saved.save(filepath, "JPEG", quality=JPEG_QUALITY)
 
             self.capture_next_idx += 1
             self.capture_count += 1
@@ -493,6 +489,15 @@ class MainWindow:
 
         except Exception as e:
             self._log(f"⚠ Frame error: {e}")
+
+    def _preview_frame(self, raw):
+        if len(raw) != FRAME_SIZE:
+            return
+        try:
+            img = Image.frombytes("L", (FRAME_WIDTH, FRAME_HEIGHT), raw)
+            self._update_preview(img)
+        except Exception:
+            pass
 
     def _update_preview(self, img):
         try:

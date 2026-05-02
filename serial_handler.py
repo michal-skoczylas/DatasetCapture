@@ -5,7 +5,7 @@ import time
 import serial
 import serial.tools.list_ports
 
-from protocol import SYNC_BYTES, STOP_BYTE, HEADER_SIZE, FOOTER_SIZE, FRAME_QUEUE_MAXSIZE
+from protocol import SYNC_BYTES, HEADER_SIZE, FRAME_SIZE, FRAME_QUEUE_MAXSIZE
 
 
 class SerialHandler:
@@ -81,29 +81,15 @@ class SerialHandler:
     def _extract_frame(self, buf):
         sync_idx = buf.find(SYNC_BYTES)
         if sync_idx == -1:
-            keep = min(len(SYNC_BYTES) - 1, len(buf))
+            keep = min(HEADER_SIZE - 1, len(buf))
             discard = len(buf) - keep
             return None, discard if discard > 0 else 0
 
-        min_needed = HEADER_SIZE + FOOTER_SIZE
-        if len(buf) - sync_idx < min_needed:
-            return None, sync_idx
-
-        size_bytes = buf[sync_idx + len(SYNC_BYTES):sync_idx + HEADER_SIZE]
-        payload_size = int.from_bytes(size_bytes, 'little')
-
-        if payload_size < 1 or payload_size > 10_000_000:
-            return None, sync_idx + 1
-
-        frame_total = HEADER_SIZE + payload_size + FOOTER_SIZE
+        frame_total = HEADER_SIZE + FRAME_SIZE
         if len(buf) - sync_idx < frame_total:
             return None, sync_idx
 
-        stop_pos = sync_idx + HEADER_SIZE + payload_size
-        if buf[stop_pos] != STOP_BYTE:
-            return None, sync_idx + 1
-
         payload_start = sync_idx + HEADER_SIZE
-        payload = bytes(buf[payload_start:payload_start + payload_size])
+        payload = bytes(buf[payload_start:payload_start + FRAME_SIZE])
 
         return payload, sync_idx + frame_total
