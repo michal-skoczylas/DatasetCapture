@@ -25,12 +25,13 @@ from protocol import (
 )
 from serial_handler import SerialHandler
 from utils import (
+    count_images,
     get_next_index,
     load_config,
     parse_resolution,
+    renumber_images,
     sanitize_class_name,
     save_config,
-    update_class_history,
 )
 
 
@@ -57,6 +58,7 @@ class MainWindow:
         self._capture_timer_id = None
         self._countdown_after_id = None
         self._preview_photo = None
+        self._renumbered_dirs = set()
 
         self._build_ui()
         self._setup_listbox_hover()
@@ -244,7 +246,6 @@ class MainWindow:
         self.res_var.set(cfg.get("last_resolution", DEFAULT_RESOLUTION))
         self.auto_resize_var.set(cfg.get("auto_resize", False))
         self.duration_var.set(str(cfg.get("last_duration", DEFAULT_DURATION)))
-        self.class_combo["values"] = cfg.get("class_history", [])
         self._refresh_ports()
         self._update_full_path()
 
@@ -254,6 +255,43 @@ class MainWindow:
         if ports and not self.port_var.get():
             self.port_var.set(ports[0])
 
+    def _scan_subdirectories(self, directory):
+        try:
+            entries = os.listdir(directory)
+        except OSError:
+            return
+
+        subdirs = [
+            e for e in entries
+            if not e.startswith(".") and os.path.isdir(os.path.join(directory, e))
+        ]
+        subdirs.sort(key=str.lower)
+        self.class_combo["values"] = subdirs
+
+    def _check_renumber(self, dir_path, class_name):
+        if self.capturing:
+            return
+        if not dir_path or not class_name:
+            return
+
+        full_path = os.path.join(dir_path, class_name)
+        if full_path in self._renumbered_dirs:
+            return
+        self._renumbered_dirs.add(full_path)
+
+        count = count_images(full_path)
+        if count == 0:
+            return
+
+        ok = messagebox.askyesno(
+            "Renumber Images",
+            f"Found {count} images in:\n{full_path}\n\n"
+            f"Renumber them from 0000.jpg to {count - 1:04d}.jpg?"
+        )
+        if ok:
+            renumber_images(full_path, start=0)
+            self._log(f"Renumbered {count} images in {full_path} (0000\u2013{count - 1:04d})")
+
     def _browse_directory(self):
         path = filedialog.askdirectory(
             title="Select save directory",
@@ -262,9 +300,17 @@ class MainWindow:
         if path:
             self.dir_var.set(path)
             self._update_full_path()
+            self._scan_subdirectories(path)
+            c = self.class_var.get().strip()
+            if c:
+                self._check_renumber(path, c)
 
     def _on_class_change(self, *args):
         self._update_full_path()
+        d = self.dir_var.get().strip()
+        c = self.class_var.get().strip()
+        if d and c:
+            self._check_renumber(d, c)
 
     def _update_full_path(self):
         d = self.dir_var.get().strip()
@@ -353,11 +399,7 @@ class MainWindow:
         self.config["auto_resize"] = self.auto_resize
         self.config["last_baud"] = int(self.baud_var.get())
         self.config["last_port"] = self.port_var.get()
-        self.config["class_history"] = update_class_history(
-            self.config.get("class_history", []), c
-        )
         save_config(self.config)
-        self.class_combo["values"] = self.config["class_history"]
 
         self._log(f'Capture session – class: "{c}", {duration}s, {w}×{h}')
 
@@ -439,7 +481,8 @@ class MainWindow:
         self.progress_var.set(100)
         self.time_var.set(f"Done ({elapsed:.1f}s)")
 
-        self._log(f"Capture finished – {self.capture_count} images in {self.capture_save_dir}")
+        total = count_images(self.capture_save_dir)
+        self._log(f"Capture finished \u2013 {self.capture_count} saved ({total} total) in {self.capture_save_dir}")
 
     def stop_capture_or_disconnect(self):
         if self._countdown_after_id or self.capturing:

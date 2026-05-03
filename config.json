@@ -1,11 +1,14 @@
 {
-  "last_port": "/dev/cu.usbmodem1201",
+  "last_port": "/dev/cu.usbmodem11101",
   "last_baud": 115200,
   "last_directory": "/Users/michalskoczylas/Documents/studia/thesis/dataset",
   "last_resolution": "324\u00d7324",
   "auto_resize": true,
-  "last_duration": 10.0,
+  "last_duration": 5.0,
   "class_history": [
+    "None",
+    "ClosedHand",
+    "OpenHand",
     "unknown",
     "hihi",
     "asd"

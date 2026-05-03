@@ -2,7 +2,7 @@ import json
 import os
 from pathlib import Path
 
-from protocol import DEFAULT_BAUD, DEFAULT_DURATION, DEFAULT_RESOLUTION, MAX_CLASS_HISTORY, RESOLUTIONS
+from protocol import DEFAULT_BAUD, DEFAULT_DURATION, DEFAULT_RESOLUTION, RESOLUTIONS
 
 CONFIG_FILE = Path(__file__).parent / "config.json"
 
@@ -52,13 +52,6 @@ def get_next_index(directory):
     return max_idx + 1
 
 
-def update_class_history(history, class_name):
-    if class_name in history:
-        history.remove(class_name)
-    history.insert(0, class_name)
-    return history[:MAX_CLASS_HISTORY]
-
-
 def sanitize_class_name(name):
     keep = {"_", "-"}
     cleaned = "".join(c if c.isalnum() or c in keep else "_" for c in name)
@@ -79,3 +72,47 @@ def parse_resolution(text):
         return w, h
 
     raise ValueError(f"Unrecognized resolution format: {text}")
+
+
+def count_images(directory):
+    if not os.path.isdir(directory):
+        return 0
+    return sum(1 for f in os.listdir(directory) if f.endswith(".jpg"))
+
+
+def renumber_images(directory, start=0):
+    if not os.path.isdir(directory):
+        return 0
+
+    files = [f for f in os.listdir(directory) if f.endswith(".jpg")]
+    n = len(files)
+    if n == 0:
+        return 0
+
+    def sort_key(fname):
+        try:
+            return (0, int(os.path.splitext(fname)[0]))
+        except ValueError:
+            return (1, fname)
+
+    files.sort(key=sort_key)
+
+    tmp_prefix = "_rn_tmp_"
+    for i, old_name in enumerate(files):
+        old_path = os.path.join(directory, old_name)
+        tmp_path = os.path.join(directory, f"{tmp_prefix}{i}.tmp")
+        os.rename(old_path, tmp_path)
+
+    for i in range(n):
+        tmp_path = os.path.join(directory, f"{tmp_prefix}{i}.tmp")
+        new_path = os.path.join(directory, f"{start + i:04d}.jpg")
+        os.rename(tmp_path, new_path)
+
+    for fname in os.listdir(directory):
+        if fname.startswith(tmp_prefix) and fname.endswith(".tmp"):
+            try:
+                os.remove(os.path.join(directory, fname))
+            except OSError:
+                pass
+
+    return n

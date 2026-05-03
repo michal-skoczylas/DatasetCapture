@@ -1,3 +1,25 @@
+# Session changes — 2026-05-03
+
+## Image renumbering + total counter + class subdirectory scanning
+
+### Changes to `utils.py`
+- Added `count_images(directory)` — counts `.jpg` files in a directory (returns 0 if not exists)
+- Added `renumber_images(directory, start=0)` — renames all `.jpg` files sequentially from `start` (format `0000.jpg`), sorted by existing numeric prefix, two-phase rename via temporary names to avoid conflicts
+- Removed `update_class_history()` function (class history feature removed)
+- Removed `MAX_CLASS_HISTORY` from imports
+
+### Changes to `app.py`
+- Added `count_images`, `renumber_images` to imports; removed `update_class_history`
+- Added `_renumbered_dirs` set attribute — tracks which `dir/class` paths have already been checked for renumbering (prevents repeat dialogs)
+- Added `_scan_subdirectories(directory)` method — lists non-hidden subdirectories of the base save folder, sorts alphabetically, sets them as `class_combo` values (detected classes first)
+- Added `_check_renumber(dir_path, class_name)` method — counts `.jpg` in `dir/class/`, shows `askyesno` dialog offering renumbering from `0000.jpg` up, executes `renumber_images()` if user confirms
+- `_browse_directory()` now calls `_scan_subdirectories()` and `_check_renumber()` after selecting a path
+- `_on_class_change()` now calls `_check_renumber()` when both directory and class are set
+- `stop_capture()` log extended: `"Capture finished – X saved (Y total) in /path/"` (includes total image count in the folder)
+- Removed class history saving from `start_capture()` — no longer saves to config or updates combo values
+- Removed `class_combo["values"]` restoration from `_restore_config()` (combo now populated by `_scan_subdirectories` only)
+
+
 # Session changes — 2026-05-02
 
 ## Protocol updated for Pico HM01B0 firmware
