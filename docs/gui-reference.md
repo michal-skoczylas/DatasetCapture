@@ -88,6 +88,8 @@ Otwierane przyciskiem **Review** po zakończeniu sesji capture.
 │                                                        │
 │  [← Prev]     Image 5 / 42  (0004.jpg)     [Next →]   │
 │                                                 [Close]│
+│                                                        │
+│  Padding: ═══════════●══════════════  10 px            │
 └────────────────────────────────────────────────────────┘
 ```
 
@@ -97,9 +99,12 @@ Otwierane przyciskiem **Review** po zakończeniu sesji capture.
 | Bounding box | Prostokąt w kolorze zależnym od class_id + nazwa klasy |
 | ← Prev / Next → | Nawigacja między zdjęciami (również strzałki ← →) |
 | Counter | "Image X / N (filename)" |
+| Padding slider | Suwak 0–50 px, domyślnie 10 px — bufor wokół bbox |
 | Close | Zamyka okno (również Escape) |
 
 **Kolory bbox**: czerwony, zielony, niebieski, żółty, magenta, cyan — cyklicznie dla różnych class_id.
+
+**Padding bbox**: Suwak pozwala regulować odstęp między prostokątem bbox a wykrytym obiektem. Wartość 0 px = bbox dokładnie przylega, wyższe wartości dodają bufor w pikselach.
 
 ### 4. Log (dolny panel)
 

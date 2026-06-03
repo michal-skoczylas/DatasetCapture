@@ -10,6 +10,7 @@
 - Różne kolory bbox dla różnych class_id (6 kolorów cyklicznie)
 - Etykieta z nazwą klasy nad prostokątem
 - Obsługa braku pliku `.txt` (zdjęcie bez detekcji) i pustego katalogu
+- **Slider paddingu bbox** (0–50 px, domyślnie 10 px) — konfigurowalny bufor wokół prostokąta
 
 ### Zmiany w `utils.py`
 - Dodano `load_yolo_labels(txt_path)` — wczytuje plik `.txt` w formacie YOLO, zwraca listę słowników z class_id, cx, cy, bw, bh
