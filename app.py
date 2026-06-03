@@ -10,6 +10,8 @@ from tkinter import ttk
 import tkinter as tk
 from PIL import Image, ImageTk
 
+from detection_worker import DetectionWorker
+from hand_detector import HandDetector
 from protocol import (
     BAUD_RATES,
     DEFAULT_BAUD,
@@ -26,12 +28,15 @@ from protocol import (
 from serial_handler import SerialHandler
 from utils import (
     count_images,
+    get_class_id,
     get_next_index,
     load_config,
     parse_resolution,
     renumber_images,
     sanitize_class_name,
+    save_classes_txt,
     save_config,
+    save_yolo_label,
 )
 
 
@@ -59,6 +64,12 @@ class MainWindow:
         self._countdown_after_id = None
         self._preview_photo = None
         self._renumbered_dirs = set()
+
+        self._hand_detector = None
+        self._detection_worker = None
+        self._detection_enabled = False
+        self._detection_confidence = 0.5
+        self._detection_class_id = 0
 
         self._build_ui()
         self._setup_listbox_hover()
@@ -185,6 +196,20 @@ class MainWindow:
         self.stop_btn = ttk.Button(r0, text="■ STOP", command=self.stop_capture, state=tk.DISABLED)
         self.stop_btn.pack(side=tk.LEFT)
 
+        r_det = ttk.Frame(frame)
+        r_det.pack(fill=tk.X, pady=(6, 4))
+        self.detect_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(
+            r_det, text="Enable hand detection",
+            variable=self.detect_var, command=self._on_detection_toggle
+        ).pack(side=tk.LEFT, padx=(0, 12))
+        ttk.Label(r_det, text="Min conf:").pack(side=tk.LEFT)
+        self.detect_conf_var = tk.StringVar(value="0.5")
+        ttk.Combobox(
+            r_det, textvariable=self.detect_conf_var, width=4,
+            values=["0.3", "0.5", "0.7", "0.9"], state="readonly"
+        ).pack(side=tk.LEFT)
+
         self.countdown_var = tk.StringVar(value="")
         self.countdown_label = ttk.Label(
             frame, textvariable=self.countdown_var,
@@ -246,6 +271,13 @@ class MainWindow:
         self.res_var.set(cfg.get("last_resolution", DEFAULT_RESOLUTION))
         self.auto_resize_var.set(cfg.get("auto_resize", False))
         self.duration_var.set(str(cfg.get("last_duration", DEFAULT_DURATION)))
+        self.detect_var.set(cfg.get("hand_detection_enabled", False))
+        self.detect_conf_var.set(str(cfg.get("min_detection_confidence", 0.5)))
+        self._detection_enabled = cfg.get("hand_detection_enabled", False)
+        try:
+            self._detection_confidence = float(cfg.get("min_detection_confidence", 0.5))
+        except (ValueError, TypeError):
+            self._detection_confidence = 0.5
         self._refresh_ports()
         self._update_full_path()
 
@@ -291,6 +323,41 @@ class MainWindow:
         if ok:
             renumber_images(full_path, start=0)
             self._log(f"Renumbered {count} images in {full_path} (0000\u2013{count - 1:04d})")
+
+    def _on_detection_toggle(self):
+        self._detection_enabled = self.detect_var.get()
+        if self._detection_enabled:
+            try:
+                self._detection_confidence = float(self.detect_conf_var.get())
+            except ValueError:
+                self._detection_confidence = 0.5
+
+    def _init_detection(self):
+        if self._detection_worker is not None:
+            return True
+        try:
+            self._detection_confidence = float(self.detect_conf_var.get())
+        except ValueError:
+            self._detection_confidence = 0.5
+        try:
+            self._hand_detector = HandDetector(
+                min_detection_confidence=self._detection_confidence,
+                max_num_hands=2,
+            )
+            self._detection_worker = DetectionWorker(
+                hand_detector=self._hand_detector,
+                save_callback=save_yolo_label,
+                log_callback=self._log,
+            )
+            self._detection_worker.start()
+            self._log("Hand detection worker started")
+            return True
+        except Exception as e:
+            self._log(f"Failed to init hand detection: {e}")
+            messagebox.showerror("Detection Error", f"Cannot initialize MediaPipe:\n{e}")
+            self._detection_enabled = False
+            self.detect_var.set(False)
+            return False
 
     def _browse_directory(self):
         path = filedialog.askdirectory(
@@ -393,12 +460,25 @@ class MainWindow:
         self.auto_resize = self.auto_resize_var.get()
         self.capture_next_idx = get_next_index(save_dir)
 
+        if self._detection_enabled:
+            if not self._init_detection():
+                return
+            self._detection_class_id = get_class_id(d, c)
+            entries = os.listdir(d) if os.path.isdir(d) else []
+            subdirs = sorted(
+                [e for e in entries if not e.startswith(".") and os.path.isdir(os.path.join(d, e))],
+                key=str.lower,
+            )
+            save_classes_txt(d, subdirs)
+
         self.config["last_directory"] = d
         self.config["last_duration"] = duration
         self.config["last_resolution"] = self.res_var.get()
         self.config["auto_resize"] = self.auto_resize
         self.config["last_baud"] = int(self.baud_var.get())
         self.config["last_port"] = self.port_var.get()
+        self.config["hand_detection_enabled"] = self._detection_enabled
+        self.config["min_detection_confidence"] = self._detection_confidence
         save_config(self.config)
 
         self._log(f'Capture session – class: "{c}", {duration}s, {w}×{h}')
@@ -482,7 +562,10 @@ class MainWindow:
         self.time_var.set(f"Done ({elapsed:.1f}s)")
 
         total = count_images(self.capture_save_dir)
-        self._log(f"Capture finished \u2013 {self.capture_count} saved ({total} total) in {self.capture_save_dir}")
+        msg = f"Capture finished \u2013 {self.capture_count} saved ({total} total) in {self.capture_save_dir}"
+        if self._detection_worker:
+            msg += f", detection: {self._detection_worker.processed} labels ({self._detection_worker.queue_size} queued)"
+        self._log(msg)
 
     def stop_capture_or_disconnect(self):
         if self._countdown_after_id or self.capturing:
@@ -522,6 +605,9 @@ class MainWindow:
             filename = f"{self.capture_next_idx:04d}.jpg"
             filepath = os.path.join(self.capture_save_dir, filename)
             saved.save(filepath, "JPEG", quality=JPEG_QUALITY)
+
+            if self._detection_enabled and self._detection_worker:
+                self._detection_worker.enqueue(filepath, self._detection_class_id)
 
             self.capture_next_idx += 1
             self.capture_count += 1
@@ -572,6 +658,13 @@ class MainWindow:
             self.config["last_duration"] = float(self.duration_var.get())
         except ValueError:
             pass
+        self.config["hand_detection_enabled"] = self._detection_enabled
+        self.config["min_detection_confidence"] = self._detection_confidence
         save_config(self.config)
+
+        if self._detection_worker:
+            self._detection_worker.stop()
+        if self._hand_detector:
+            self._hand_detector.close()
 
         self.root.destroy()

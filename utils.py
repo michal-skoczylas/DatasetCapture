@@ -14,6 +14,8 @@ DEFAULT_CONFIG = {
     "auto_resize": False,
     "last_duration": DEFAULT_DURATION,
     "class_history": [],
+    "hand_detection_enabled": False,
+    "min_detection_confidence": 0.5,
 }
 
 
@@ -116,3 +118,51 @@ def renumber_images(directory, start=0):
                 pass
 
     return n
+
+
+def save_yolo_label(image_path, bboxes, class_id):
+    label_path = os.path.splitext(image_path)[0] + ".txt"
+
+    lines = []
+    for bbox in bboxes:
+        cx = (bbox["x1"] + bbox["x2"]) / 2.0
+        cy = (bbox["y1"] + bbox["y2"]) / 2.0
+        bw = bbox["x2"] - bbox["x1"]
+        bh = bbox["y2"] - bbox["y1"]
+        lines.append(f"{class_id} {cx:.6f} {cy:.6f} {bw:.6f} {bh:.6f}")
+
+    with open(label_path, "w") as f:
+        f.write("\n".join(lines) + "\n")
+
+
+def save_classes_txt(base_dir, class_names):
+    class_names = sorted(set(class_names), key=str.lower)
+    classes_path = os.path.join(base_dir, "classes.txt")
+    with open(classes_path, "w") as f:
+        f.write("\n".join(class_names) + "\n")
+
+
+def get_class_id(base_dir, class_name):
+    classes_path = os.path.join(base_dir, "classes.txt")
+    if os.path.isfile(classes_path):
+        with open(classes_path) as f:
+            classes = [line.strip() for line in f if line.strip()]
+        if class_name in classes:
+            return classes.index(class_name)
+
+    try:
+        subdirs = sorted(
+            [
+                e
+                for e in os.listdir(base_dir)
+                if not e.startswith(".") and os.path.isdir(os.path.join(base_dir, e))
+            ],
+            key=str.lower,
+        )
+    except OSError:
+        subdirs = []
+
+    if class_name in subdirs:
+        return subdirs.index(class_name)
+
+    return 0

@@ -1,7 +1,7 @@
 {
   "last_port": "/dev/cu.usbmodem11101",
   "last_baud": 115200,
-  "last_directory": "/Users/michalskoczylas/Documents/studia/thesis/dataset",
+  "last_directory": "/Users/michalskoczylas/Documents/Projects/dataset_test",
   "last_resolution": "324\u00d7324",
   "auto_resize": true,
   "last_duration": 5.0,
@@ -12,5 +12,7 @@
     "unknown",
     "hihi",
     "asd"
-  ]
+  ],
+  "hand_detection_enabled": true,
+  "min_detection_confidence": 0.3
 }
