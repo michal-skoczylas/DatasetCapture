@@ -63,11 +63,43 @@ Aplikacja wykorzystuje **tkinter** (standardowa biblioteka GUI Pythona) ze stylo
 | Duration `Spinbox` | Czas przechwytywania 1-300 sekund |
 | ▶ START CAPTURE | Rozpoczyna odliczanie 3-2-1-GO!, potem przechwytywanie |
 | ■ STOP | Zatrzymuje przechwytywanie przed czasem |
+| Review | Otwiera okno podglądu z bounding boxami (aktywny po zakończeniu capture) |
 | Countdown label | Duży tekst 3, 2, 1, GO! podczas odliczania |
 | `Progressbar` | Pasek postępu (0-100%) |
 | `time_var` | Pozostały czas (np. "5.2s / 10s") |
 | `saved_var` | Liczba zapisanych obrazów (np. "Images: 42") |
 | `last_saved_var` | Nazwa ostatniego pliku (np. "Last: 0041.jpg") |
+
+### 5. Review Window (osobne okno)
+
+Otwierane przyciskiem **Review** po zakończeniu sesji capture.
+
+```
+┌────────────────────────────────────────────────────────┐
+│  Review Captured Images                          _ □ ✕ │
+├────────────────────────────────────────────────────────┤
+│                                                        │
+│  ┌──────────────────────────────────────────────────┐  │
+│  │                                                  │  │
+│  │              (640×480 px)                        │  │
+│  │         zdjęcie z bbox i etykietami              │  │
+│  │                                                  │  │
+│  └──────────────────────────────────────────────────┘  │
+│                                                        │
+│  [← Prev]     Image 5 / 42  (0004.jpg)     [Next →]   │
+│                                                 [Close]│
+└────────────────────────────────────────────────────────┘
+```
+
+| Element | Opis |
+|---------|------|
+| Canvas | 640×480 px, ciemne tło, wyświetla zdjęcie z bbox |
+| Bounding box | Prostokąt w kolorze zależnym od class_id + nazwa klasy |
+| ← Prev / Next → | Nawigacja między zdjęciami (również strzałki ← →) |
+| Counter | "Image X / N (filename)" |
+| Close | Zamyka okno (również Escape) |
+
+**Kolory bbox**: czerwony, zielony, niebieski, żółty, magenta, cyan — cyklicznie dla różnych class_id.
 
 ### 4. Log (dolny panel)
 
@@ -110,7 +142,8 @@ Aplikacja wykorzystuje **tkinter** (standardowa biblioteka GUI Pythona) ze stylo
 
 | Klawisz | Działanie |
 |---------|-----------|
-| `Escape` | Stop capture (jeśli trwa) LUB Disconnect (jeśli połączony) |
+| `Escape` | Stop capture (jeśli trwa) LUB Disconnect (jeśli połączony) LUB Close review window |
+| `←` / `→` | W Review Window: nawigacja między zdjęciami |
 
 ---
 
@@ -151,6 +184,7 @@ Aplikacja wykorzystuje **tkinter** (standardowa biblioteka GUI Pythona) ze stylo
 - Czas: "Done (X.Xs)"
 - START CAPTURE: aktywny
 - STOP: nieaktywny
+- Review: aktywny (jeśli zapisano co najmniej 1 obraz)
 - Duration: odblokowany
 
 ---

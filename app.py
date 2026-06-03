@@ -12,6 +12,7 @@ from PIL import Image, ImageTk
 
 from detection_worker import DetectionWorker
 from hand_detector import HandDetector
+from review_window import ReviewWindow
 from protocol import (
     BAUD_RATES,
     DEFAULT_BAUD,
@@ -30,6 +31,7 @@ from utils import (
     count_images,
     get_class_id,
     get_next_index,
+    load_classes_txt,
     load_config,
     parse_resolution,
     renumber_images,
@@ -70,6 +72,7 @@ class MainWindow:
         self._detection_enabled = False
         self._detection_confidence = 0.5
         self._detection_class_id = 0
+        self._review_window = None
 
         self._build_ui()
         self._setup_listbox_hover()
@@ -195,6 +198,8 @@ class MainWindow:
         self.start_btn.pack(side=tk.LEFT, padx=(0, 8))
         self.stop_btn = ttk.Button(r0, text="■ STOP", command=self.stop_capture, state=tk.DISABLED)
         self.stop_btn.pack(side=tk.LEFT)
+        self.review_btn = ttk.Button(r0, text="Review", command=self._open_review, state=tk.DISABLED)
+        self.review_btn.pack(side=tk.LEFT, padx=(8, 0))
 
         r_det = ttk.Frame(frame)
         r_det.pack(fill=tk.X, pady=(6, 4))
@@ -539,6 +544,19 @@ class MainWindow:
         self.duration_spin.config(state=tk.NORMAL)
         self.countdown_var.set("")
         self.last_saved_var.set("")
+        self.review_btn.config(state=tk.DISABLED)
+
+    def _open_review(self):
+        if not self.capture_save_dir:
+            return
+        base_dir = os.path.dirname(self.capture_save_dir)
+        classes = load_classes_txt(base_dir)
+        if self._review_window is not None:
+            try:
+                self._review_window.destroy()
+            except Exception:
+                pass
+        self._review_window = ReviewWindow(self.root, self.capture_save_dir, classes)
 
     def stop_capture(self):
         if self._countdown_after_id:
@@ -566,6 +584,9 @@ class MainWindow:
         if self._detection_worker:
             msg += f", detection: {self._detection_worker.processed} labels ({self._detection_worker.queue_size} queued)"
         self._log(msg)
+
+        if self.capture_count > 0:
+            self.review_btn.config(state=tk.NORMAL)
 
     def stop_capture_or_disconnect(self):
         if self._countdown_after_id or self.capturing:

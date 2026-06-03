@@ -1,3 +1,29 @@
+# Session changes — 2026-06-03
+
+## Review window — podgląd zdjęć z bounding boxami
+
+### Nowy plik `review_window.py`
+- Klasa `ReviewWindow(tk.Toplevel)` — okno podglądu otwierane po zakończeniu capture
+- Canvas 640×480 px wyświetlający zdjęcia z narysowanymi bounding boxami
+- Nawigacja Prev/Next (przyciski + strzałki ← →) + przycisk Close
+- Konwersja etykiet YOLO (cx, cy, bw, bh) na współrzędne pikseli wyświetlanego obrazu
+- Różne kolory bbox dla różnych class_id (6 kolorów cyklicznie)
+- Etykieta z nazwą klasy nad prostokątem
+- Obsługa braku pliku `.txt` (zdjęcie bez detekcji) i pustego katalogu
+
+### Zmiany w `utils.py`
+- Dodano `load_yolo_labels(txt_path)` — wczytuje plik `.txt` w formacie YOLO, zwraca listę słowników z class_id, cx, cy, bw, bh
+- Dodano `load_classes_txt(base_dir)` — wczytuje `classes.txt`, zwraca listę nazw klas
+
+### Zmiany w `app.py`
+- Import `ReviewWindow` z `review_window` i `load_classes_txt` z `utils`
+- Dodano atrybut `self._review_window = None`
+- Dodano przycisk "Review" w sekcji Capture (domyślnie `state=DISABLED`)
+- Metoda `_open_review()` — tworzy `ReviewWindow` z `capture_save_dir` i załadowanymi klasami
+- `stop_capture()` — enable przycisku Review po zakończeniu capture (jeśli `capture_count > 0`)
+- `_reset_capture_ui()` — disable przycisku Review przy resetowaniu UI
+
+
 # Session changes — 2026-05-03
 
 ## Image renumbering + total counter + class subdirectory scanning

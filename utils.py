@@ -166,3 +166,32 @@ def get_class_id(base_dir, class_name):
         return subdirs.index(class_name)
 
     return 0
+
+
+def load_yolo_labels(txt_path):
+    if not os.path.isfile(txt_path):
+        return []
+    labels = []
+    with open(txt_path) as f:
+        for line in f:
+            parts = line.strip().split()
+            if len(parts) >= 5:
+                try:
+                    labels.append({
+                        "class_id": int(parts[0]),
+                        "cx": float(parts[1]),
+                        "cy": float(parts[2]),
+                        "bw": float(parts[3]),
+                        "bh": float(parts[4]),
+                    })
+                except ValueError:
+                    continue
+    return labels
+
+
+def load_classes_txt(base_dir):
+    classes_path = os.path.join(base_dir, "classes.txt")
+    if not os.path.isfile(classes_path):
+        return []
+    with open(classes_path) as f:
+        return [line.strip() for line in f if line.strip()]

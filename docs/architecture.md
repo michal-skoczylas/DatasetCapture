@@ -9,6 +9,7 @@ main.py
        ├─ import protocol.*         (stałe: FRAME_SIZE, SYNC_BYTES, RESOLUTIONS, ...)
        ├─ import serial_handler.*   (klasa SerialHandler)
        ├─ import utils.*            (load_config, save_config, parse_resolution, ...)
+       ├─ import review_window.*    (klasa ReviewWindow)
        │
        └─ korzysta z:
             ├─ tkinter              (GUI)
@@ -81,6 +82,19 @@ Klasa `MainWindow` zawiera całą logikę aplikacji. Główne sekcje:
 | `parse_resolution(text)` | Parsuje tekst rozdzielczości (np. `"324×244"`) na krotkę `(w, h)` |
 | `count_images(directory)` | Zlicza pliki `.jpg` w katalogu |
 | `renumber_images(directory, start=0)` | Przenumerowuje pliki `.jpg` sekwencyjnie od `start` |
+| `load_yolo_labels(txt_path)` | Wczytuje etykiety YOLO z pliku `.txt` |
+| `load_classes_txt(base_dir)` | Wczytuje `classes.txt`, zwraca listę nazw klas |
+
+### `review_window.py` — Okno podglądu z bounding boxami
+
+Klasa `ReviewWindow` (dziedziczy po `tk.Toplevel`) wyświetla zapisane zdjęcia z narysowanymi bounding boxami na podstawie etykiet YOLO.
+
+| Metoda | Odpowiedzialność |
+|--------|------------------|
+| `__init__(parent, save_dir, classes)` | Tworzy okno, skanuje katalog, buduje UI |
+| `_scan_images()` | Zbiera listę plików `.jpg` posortowanych numerycznie |
+| `_show_image(idx)` | Ładuje zdjęcie, rysuje bbox z etykietami |
+| `_prev()` / `_next()` | Nawigacja między zdjęciami |
 
 ## Przepływ sterowania
 

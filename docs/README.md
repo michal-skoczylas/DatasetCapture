@@ -37,7 +37,8 @@ python main.py
 | Plik | Linie | Opis |
 |------|-------|------|
 | `main.py` | 15 | Punkt wejścia — tworzy okno tkinter i uruchamia pętlę zdarzeń |
-| `app.py` | 577 | Główna klasa `MainWindow` — GUI, logika przechwytywania, przetwarzanie ramek |
+| `app.py` | 680 | Główna klasa `MainWindow` — GUI, logika przechwytywania, przetwarzanie ramek |
 | `serial_handler.py` | 95 | Klasa `SerialHandler` — wątkowy odczyt z portu szeregowego, ekstrakcja ramek z ciągu bajtów |
 | `protocol.py` | 23 | Stałe współdzielone: sync bytes, wymiary ramki, prędkości transmisji |
-| `utils.py` | 118 | Narzędzia: persistencja konfiguracji, zliczanie/numerowanie plików, parsowanie rozdzielczości |
+| `utils.py` | 195 | Narzędzia: persistencja konfiguracji, zliczanie/numerowanie plików, parsowanie rozdzielczości, ładowanie etykiet YOLO |
+| `review_window.py` | 155 | Klasa `ReviewWindow` — okno podglądu zdjęć z bounding boxami |
