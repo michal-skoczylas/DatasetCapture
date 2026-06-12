@@ -29,17 +29,32 @@ The Pico firmware transmits frames as raw pixel data: **2-byte sync header** (`0
 ## Installation
 
 ```bash
-git clone https://github.com/michal-skoczylas/DatasetCapture.git
-cd DatasetCapture
-pip install -r requirements.txt
+pip install .
 ```
+
+Or directly from the repository:
+
+```bash
+pip install git+https://github.com/michal-skoczylas/DatasetCapture.git
+```
+
+After installation, the `dataset-capture` command is available system-wide.
 
 Dependencies:
 - `pyserial` — serial communication with the Pico
 - `Pillow` — image processing and JPEG encoding
 - `mediapipe` — hand landmark detection (model auto-downloads on first use)
+- `numpy` — array operations for MediaPipe input
+
+Configuration is stored in `~/.dataset_capture/config.json` (macOS/Linux) or `%APPDATA%/dataset_capture/config.json` (Windows).
 
 ## Usage
+
+```bash
+dataset-capture
+```
+
+To run from source without installing:
 
 ```bash
 python main.py
@@ -56,6 +71,7 @@ Press **Escape** to stop capture early or disconnect.
 
 | File | Description |
 |------|-------------|
+| `pyproject.toml` | Package build config — dependencies, entry point |
 | `main.py` | Entry point — creates the tkinter window |
 | `app.py` | Main application class — GUI, capture logic, frame processing |
 | `serial_handler.py` | Threaded serial reader with buffer-based frame extraction |
