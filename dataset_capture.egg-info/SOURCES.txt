@@ -1,0 +1,17 @@
+LICENSE
+README.md
+app.py
+detection_worker.py
+hand_detector.py
+main.py
+protocol.py
+pyproject.toml
+review_window.py
+serial_handler.py
+utils.py
+dataset_capture.egg-info/PKG-INFO
+dataset_capture.egg-info/SOURCES.txt
+dataset_capture.egg-info/dependency_links.txt
+dataset_capture.egg-info/entry_points.txt
+dataset_capture.egg-info/requires.txt
+dataset_capture.egg-info/top_level.txt

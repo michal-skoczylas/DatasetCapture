@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dataset-capture"
+version = "1.0.0"
+description = "Image dataset capture tool for Raspberry Pi Pico HM01B0 camera"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.7"
+dependencies = [
+    "pyserial>=3.5",
+    "Pillow>=10.0",
+    "mediapipe>=0.10.18",
+    "numpy>=1.24",
+]
+
+[project.scripts]
+dataset-capture = "main:main"
+
+[tool.setuptools]
+py-modules = [
+    "main",
+    "app",
+    "protocol",
+    "serial_handler",
+    "utils",
+    "review_window",
+    "hand_detector",
+    "detection_worker",
+]
