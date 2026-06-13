@@ -1,8 +1,8 @@
 import os
-import sys
 from pathlib import Path
 from urllib.request import urlretrieve
 
+import cv2
 import numpy as np
 from mediapipe import Image as MpImage
 from mediapipe import ImageFormat
@@ -10,6 +10,7 @@ from mediapipe.tasks.python import BaseOptions
 from mediapipe.tasks.python.vision import HandLandmarker
 from mediapipe.tasks.python.vision import HandLandmarkerOptions
 from mediapipe.tasks.python.vision import RunningMode
+from PIL import Image
 
 
 MODEL_URL = (
@@ -18,27 +19,35 @@ MODEL_URL = (
 )
 
 CACHE_DIR = Path.home() / ".dataset_capture" / "models"
+MODEL_PATH = CACHE_DIR / "hand_landmarker_f16.task"
+LEGACY_PATH = CACHE_DIR / "hand_landmarker.task"
 
 
-def _ensure_model(path=None):
-    if path is None:
-        path = CACHE_DIR / "hand_landmarker.task"
-    if not os.path.isfile(path):
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        try:
-            urlretrieve(MODEL_URL, path)
-        except Exception as e:
-            raise RuntimeError(
-                f"Failed to download hand detection model.\n"
-                f"Download it manually from:\n{MODEL_URL}\n"
-                f"and save as:\n{path}\n\n"
-                f"Error: {e}"
-            ) from e
-    return str(path)
+def _ensure_model():
+    if os.path.isfile(MODEL_PATH):
+        return str(MODEL_PATH)
+
+    if os.path.isfile(LEGACY_PATH):
+        os.rename(LEGACY_PATH, MODEL_PATH)
+        return str(MODEL_PATH)
+
+    os.makedirs(os.path.dirname(MODEL_PATH), exist_ok=True)
+    try:
+        urlretrieve(MODEL_URL, MODEL_PATH)
+    except Exception as e:
+        raise RuntimeError(
+            f"Failed to download hand detection model.\n"
+            f"Download it manually from:\n{MODEL_URL}\n"
+            f"and save as:\n{MODEL_PATH}\n\n"
+            f"Error: {e}"
+        ) from e
+
+    return str(MODEL_PATH)
 
 
 class HandDetector:
-    def __init__(self, min_detection_confidence=0.5, max_num_hands=2):
+    def __init__(self, min_detection_confidence=0.5, max_num_hands=2,
+                 enhance_contrast=True):
         model_path = _ensure_model()
         options = HandLandmarkerOptions(
             base_options=BaseOptions(model_asset_path=model_path),
@@ -47,9 +56,17 @@ class HandDetector:
             min_hand_detection_confidence=min_detection_confidence,
         )
         self._detector = HandLandmarker.create_from_options(options)
+        self._enhance_contrast = enhance_contrast
 
     def detect(self, pil_image):
-        rgb = pil_image.convert("RGB")
+        if self._enhance_contrast and pil_image.mode == "L":
+            gray_np = np.array(pil_image)
+            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+            enhanced = clahe.apply(gray_np)
+            rgb = Image.fromarray(enhanced).convert("RGB")
+        else:
+            rgb = pil_image.convert("RGB")
+
         rgb_np = np.array(rgb)
         mp_image = MpImage(image_format=ImageFormat.SRGB, data=rgb_np)
         result = self._detector.detect(mp_image)

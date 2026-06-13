@@ -247,10 +247,10 @@ class ReviewWindow(tk.Toplevel):
             pad_row, from_=0, to=50, orient=tk.HORIZONTAL,
             command=self._on_padding_change
         )
-        self.pad_scale.set(self._padding)
         self.pad_scale.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=10)
 
         self.pad_label_var = tk.StringVar(value=f"{self._padding} px")
+        self.pad_scale.set(self._padding)
         ttk.Label(pad_row, textvariable=self.pad_label_var, width=8).pack(side=tk.LEFT)
 
     def _show_image(self, idx):

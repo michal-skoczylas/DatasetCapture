@@ -215,6 +215,10 @@ class MainWindow:
             r_det, textvariable=self.detect_conf_var, width=4,
             values=["0.3", "0.5", "0.7", "0.9"], state="readonly"
         ).pack(side=tk.LEFT)
+        self.clahe_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(
+            r_det, text="CLAHE enhance", variable=self.clahe_var
+        ).pack(side=tk.LEFT, padx=(12, 0))
 
         r_redetect = ttk.Frame(frame)
         r_redetect.pack(fill=tk.X, pady=(4, 0))
@@ -361,6 +365,7 @@ class MainWindow:
             self._hand_detector = HandDetector(
                 min_detection_confidence=self._detection_confidence,
                 max_num_hands=2,
+                enhance_contrast=self.clahe_var.get(),
             )
             self._detection_worker = DetectionWorker(
                 hand_detector=self._hand_detector,
