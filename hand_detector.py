@@ -54,18 +54,24 @@ class HandDetector:
             running_mode=RunningMode.IMAGE,
             num_hands=max_num_hands,
             min_hand_detection_confidence=min_detection_confidence,
+            min_tracking_confidence=0.3,
         )
         self._detector = HandLandmarker.create_from_options(options)
         self._enhance_contrast = enhance_contrast
 
     def detect(self, pil_image):
-        if self._enhance_contrast and pil_image.mode == "L":
-            gray_np = np.array(pil_image)
+        w, h = pil_image.size
+        img = pil_image.resize((w * 2, h * 2), Image.LANCZOS)
+
+        if self._enhance_contrast and img.mode == "L":
+            gray_np = np.array(img)
             clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
             enhanced = clahe.apply(gray_np)
-            rgb = Image.fromarray(enhanced).convert("RGB")
+            blurred = cv2.GaussianBlur(enhanced, (0, 0), 1.0)
+            sharpened = cv2.addWeighted(enhanced, 1.5, blurred, -0.5, 0)
+            rgb = Image.fromarray(sharpened).convert("RGB")
         else:
-            rgb = pil_image.convert("RGB")
+            rgb = img.convert("RGB")
 
         rgb_np = np.array(rgb)
         mp_image = MpImage(image_format=ImageFormat.SRGB, data=rgb_np)
