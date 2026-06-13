@@ -19,10 +19,13 @@ class ReviewWindow(tk.Toplevel):
 
         self._save_dir = save_dir
         self._classes = classes
+        self._all_images = []
         self._images = []
         self._current_idx = 0
         self._photo = None
         self._padding = 10
+        self._filter_annotated = "all"
+        self._filter_class = -1
 
         self._cached_photo = None
         self._cached_labels = []
@@ -55,7 +58,31 @@ class ReviewWindow(tk.Toplevel):
                 return (1, fname)
 
         files.sort(key=sort_key)
-        self._images = files
+
+        self._all_images = []
+        for fname in files:
+            txt_path = os.path.join(self._save_dir, os.path.splitext(fname)[0] + ".txt")
+            labels = load_yolo_labels(txt_path)
+            annotated = len(labels) > 0
+            class_ids = set(label["class_id"] for label in labels)
+            self._all_images.append({
+                "filename": fname,
+                "annotated": annotated,
+                "class_ids": class_ids,
+            })
+
+        self._apply_filters()
+
+    def _apply_filters(self):
+        self._images = []
+        for item in self._all_images:
+            if self._filter_annotated == "annotated" and not item["annotated"]:
+                continue
+            if self._filter_annotated == "unannotated" and item["annotated"]:
+                continue
+            if self._filter_class >= 0 and self._filter_class not in item["class_ids"]:
+                continue
+            self._images.append(item["filename"])
 
     def _show_empty(self):
         frame = ttk.Frame(self, padding=20)
@@ -66,6 +93,15 @@ class ReviewWindow(tk.Toplevel):
         ).pack()
         ttk.Button(frame, text="Close", command=self.destroy).pack(pady=10)
 
+    def _on_slider_move(self, value):
+        idx = int(float(value)) - 1
+        if idx != self._current_idx:
+            self._show_image(idx)
+
+    def _update_slider(self):
+        self.image_slider.config(to=max(1, len(self._images)))
+        self.image_slider.set(self._current_idx + 1)
+
     def _build_ui(self):
         main = ttk.Frame(self, padding=10)
         main.pack(fill=tk.BOTH, expand=True)
@@ -75,6 +111,18 @@ class ReviewWindow(tk.Toplevel):
             bg="#1e1e1e", highlightthickness=0
         )
         self.canvas.pack()
+
+        slider_frame = ttk.Frame(main)
+        slider_frame.pack(fill=tk.X, pady=(8, 0))
+
+        ttk.Label(slider_frame, text="Image:").pack(side=tk.LEFT)
+        self.image_slider = ttk.Scale(
+            slider_frame, from_=1, to=max(1, len(self._images)),
+            orient=tk.HORIZONTAL,
+            command=self._on_slider_move
+        )
+        self.image_slider.set(1)
+        self.image_slider.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=10)
 
         nav = ttk.Frame(main)
         nav.pack(fill=tk.X, pady=(10, 0))
@@ -144,6 +192,7 @@ class ReviewWindow(tk.Toplevel):
         self.counter_var.set(f"Image {idx + 1} / {len(self._images)}  ({filename})")
         self.prev_btn.config(state=tk.NORMAL if idx > 0 else tk.DISABLED)
         self.next_btn.config(state=tk.NORMAL if idx < len(self._images) - 1 else tk.DISABLED)
+        self._update_slider()
 
     def _redraw_bboxes(self):
         if self._cached_photo is None:

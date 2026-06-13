@@ -376,6 +376,7 @@ class MainWindow:
             c = self.class_var.get().strip()
             if c:
                 self._check_renumber(path, c)
+            self._update_review_btn()
 
     def _on_class_change(self, *args):
         self._update_full_path()
@@ -383,6 +384,7 @@ class MainWindow:
         c = self.class_var.get().strip()
         if d and c:
             self._check_renumber(d, c)
+        self._update_review_btn()
 
     def _update_full_path(self):
         d = self.dir_var.get().strip()
@@ -394,6 +396,17 @@ class MainWindow:
             self.path_preview_var.set(f"→ {d}/[class]")
         else:
             self.path_preview_var.set("→ (select directory and class)")
+
+    def _update_review_btn(self):
+        d = self.dir_var.get().strip()
+        c = self.class_var.get().strip()
+        path = os.path.join(d, c) if c else d
+        has_images = (
+            path
+            and os.path.isdir(path)
+            and any(f.endswith(".jpg") for f in os.listdir(path))
+        )
+        self.review_btn.config(state=tk.NORMAL if has_images else tk.DISABLED)
 
     def _toggle_connect(self):
         if self.serial.connected:
@@ -544,19 +557,22 @@ class MainWindow:
         self.duration_spin.config(state=tk.NORMAL)
         self.countdown_var.set("")
         self.last_saved_var.set("")
-        self.review_btn.config(state=tk.DISABLED)
+        self._update_review_btn()
 
     def _open_review(self):
-        if not self.capture_save_dir:
+        d = self.dir_var.get().strip()
+        c = self.class_var.get().strip()
+        save_dir = os.path.join(d, c) if c else d
+        if not save_dir or not os.path.isdir(save_dir):
             return
-        base_dir = os.path.dirname(self.capture_save_dir)
+        base_dir = d
         classes = load_classes_txt(base_dir)
         if self._review_window is not None:
             try:
                 self._review_window.destroy()
             except Exception:
                 pass
-        self._review_window = ReviewWindow(self.root, self.capture_save_dir, classes)
+        self._review_window = ReviewWindow(self.root, save_dir, classes)
 
     def stop_capture(self):
         if self._countdown_after_id:
@@ -584,9 +600,6 @@ class MainWindow:
         if self._detection_worker:
             msg += f", detection: {self._detection_worker.processed} labels ({self._detection_worker.queue_size} queued)"
         self._log(msg)
-
-        if self.capture_count > 0:
-            self.review_btn.config(state=tk.NORMAL)
 
     def stop_capture_or_disconnect(self):
         if self._countdown_after_id or self.capturing:
