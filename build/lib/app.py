@@ -12,6 +12,7 @@ from PIL import Image, ImageTk
 
 from detection_worker import DetectionWorker
 from hand_detector import HandDetector
+from yolo_detector import YoloDetector
 from review_window import ReviewWindow
 from protocol import (
     BAUD_RATES,
@@ -74,6 +75,11 @@ class MainWindow:
         self._detection_class_id = 0
         self._review_window = None
         self._redetect_after_id = None
+
+        self._detector_type = "mediapipe"
+        self._yolo_model_path = ""
+        self._yolo_confidence = 0.3
+        self._yolo_iou = 0.5
 
         self._build_ui()
         self._setup_listbox_hover()
@@ -209,26 +215,70 @@ class MainWindow:
             r_det, text="Enable hand detection",
             variable=self.detect_var, command=self._on_detection_toggle
         ).pack(side=tk.LEFT, padx=(0, 12))
-        ttk.Label(r_det, text="Min conf:").pack(side=tk.LEFT)
+        ttk.Label(r_det, text="Detector:").pack(side=tk.LEFT)
+        self.detector_type_var = tk.StringVar(value="mediapipe")
+        self.detector_combo = ttk.Combobox(
+            r_det, textvariable=self.detector_type_var, width=14,
+            values=["MediaPipe", "Custom YOLO"], state="readonly"
+        )
+        self.detector_combo.pack(side=tk.LEFT, padx=(4, 0))
+        self.detector_combo.bind("<<ComboboxSelected>>", self._on_detector_change)
+
+        self.r_mp_ctrl = ttk.Frame(frame)
+        self.r_mp_ctrl.pack(fill=tk.X, pady=(4, 0))
+        ttk.Label(self.r_mp_ctrl, text="Min conf:").pack(side=tk.LEFT)
         self.detect_conf_var = tk.StringVar(value="0.2")
         ttk.Combobox(
-            r_det, textvariable=self.detect_conf_var, width=4,
+            self.r_mp_ctrl, textvariable=self.detect_conf_var, width=4,
             values=["0.1", "0.2", "0.3", "0.5", "0.7"], state="readonly"
         ).pack(side=tk.LEFT)
         self.clahe_var = tk.BooleanVar(value=True)
         ttk.Checkbutton(
-            r_det, text="CLAHE enhance", variable=self.clahe_var
+            self.r_mp_ctrl, text="CLAHE enhance", variable=self.clahe_var
         ).pack(side=tk.LEFT, padx=(12, 0))
 
-        r_redetect = ttk.Frame(frame)
-        r_redetect.pack(fill=tk.X, pady=(4, 0))
+        self.r_yolo_ctrl = ttk.Frame(frame)
+
+        r_y1 = ttk.Frame(self.r_yolo_ctrl)
+        r_y1.pack(fill=tk.X)
+        ttk.Label(r_y1, text="Model:").pack(side=tk.LEFT)
+        self.yolo_model_var = tk.StringVar()
+        self.yolo_model_entry = ttk.Entry(r_y1, textvariable=self.yolo_model_var)
+        self.yolo_model_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(4, 4))
+        ttk.Button(r_y1, text="Browse", command=self._browse_yolo_model).pack(side=tk.LEFT)
+
+        r_y2 = ttk.Frame(self.r_yolo_ctrl)
+        r_y2.pack(fill=tk.X, pady=(4, 0))
+        ttk.Label(r_y2, text="Conf:").pack(side=tk.LEFT)
+        self.yolo_conf_var = tk.DoubleVar(value=0.3)
+        ttk.Scale(
+            r_y2, from_=0.1, to=0.9, variable=self.yolo_conf_var,
+            orient=tk.HORIZONTAL, length=100
+        ).pack(side=tk.LEFT, padx=4)
+        self.yolo_conf_label = ttk.Label(r_y2, text="0.3", width=4)
+        self.yolo_conf_label.pack(side=tk.LEFT)
+        self.yolo_conf_var.trace_add("write", lambda *a: self.yolo_conf_label.config(
+            text=f"{self.yolo_conf_var.get():.1f}"))
+        ttk.Label(r_y2, text="  IOU:").pack(side=tk.LEFT, padx=(12, 0))
+        self.yolo_iou_var = tk.DoubleVar(value=0.5)
+        ttk.Scale(
+            r_y2, from_=0.1, to=0.9, variable=self.yolo_iou_var,
+            orient=tk.HORIZONTAL, length=100
+        ).pack(side=tk.LEFT, padx=4)
+        self.yolo_iou_label = ttk.Label(r_y2, text="0.5", width=4)
+        self.yolo_iou_label.pack(side=tk.LEFT)
+        self.yolo_iou_var.trace_add("write", lambda *a: self.yolo_iou_label.config(
+            text=f"{self.yolo_iou_var.get():.1f}"))
+
+        self.r_redetect = ttk.Frame(frame)
+        self.r_redetect.pack(fill=tk.X, pady=(4, 0))
         self.redetect_btn = ttk.Button(
-            r_redetect, text="Re-detect All",
+            self.r_redetect, text="Re-detect All",
             command=self._redetect_all, state=tk.DISABLED
         )
         self.redetect_btn.pack(side=tk.LEFT)
         self.redetect_status_var = tk.StringVar(value="")
-        ttk.Label(r_redetect, textvariable=self.redetect_status_var, foreground="#555").pack(
+        ttk.Label(self.r_redetect, textvariable=self.redetect_status_var, foreground="#555").pack(
             side=tk.LEFT, padx=10
         )
 
@@ -300,6 +350,17 @@ class MainWindow:
             self._detection_confidence = float(cfg.get("min_detection_confidence", 0.2))
         except (ValueError, TypeError):
             self._detection_confidence = 0.2
+
+        self._detector_type = cfg.get("detector_type", "mediapipe")
+        if self._detector_type == "yolo":
+            self.detector_type_var.set("Custom YOLO")
+            self._on_detector_change()
+        self.yolo_model_var.set(cfg.get("yolo_model_path", ""))
+        self._yolo_confidence = float(cfg.get("yolo_confidence", 0.3))
+        self.yolo_conf_var.set(self._yolo_confidence)
+        self._yolo_iou = float(cfg.get("yolo_iou_threshold", 0.5))
+        self.yolo_iou_var.set(self._yolo_iou)
+
         self._refresh_ports()
         self._update_full_path()
 
@@ -354,30 +415,65 @@ class MainWindow:
             except ValueError:
                 self._detection_confidence = 0.2
 
+    def _on_detector_change(self, event=None):
+        self._detector_type = "yolo" if "YOLO" in self.detector_type_var.get() else "mediapipe"
+        if self._detector_type == "yolo":
+            self.r_mp_ctrl.pack_forget()
+            self.r_yolo_ctrl.pack(fill=tk.X, pady=(4, 0), before=self.r_redetect)
+        else:
+            self.r_yolo_ctrl.pack_forget()
+            self.r_mp_ctrl.pack(fill=tk.X, pady=(4, 0), before=self.r_redetect)
+
+    def _browse_yolo_model(self):
+        path = filedialog.askopenfilename(
+            title="Select YOLO model",
+            initialdir=self.yolo_model_var.get() or str(Path.home()),
+            filetypes=[("PyTorch model", "*.pt"), ("All files", "*.*")]
+        )
+        if path:
+            self.yolo_model_var.set(path)
+
     def _init_detection(self):
         if self._detection_worker is not None:
             return True
+
         try:
-            self._detection_confidence = float(self.detect_conf_var.get())
-        except ValueError:
-            self._detection_confidence = 0.2
-        try:
-            self._hand_detector = HandDetector(
-                min_detection_confidence=self._detection_confidence,
-                max_num_hands=2,
-                enhance_contrast=self.clahe_var.get(),
-            )
+            if self._detector_type == "yolo":
+                model_path = self.yolo_model_var.get().strip()
+                if not model_path or not os.path.isfile(model_path):
+                    messagebox.showerror(
+                        "Model Error",
+                        "YOLO model not found.\nPlease select a valid .pt file."
+                    )
+                    return False
+
+                self._yolo_confidence = self.yolo_conf_var.get()
+                self._yolo_iou = self.yolo_iou_var.get()
+                self._hand_detector = YoloDetector(
+                    model_path=model_path,
+                    confidence=self._yolo_confidence,
+                    iou_threshold=self._yolo_iou,
+                )
+            else:
+                self._detection_confidence = float(self.detect_conf_var.get())
+                self._hand_detector = HandDetector(
+                    min_detection_confidence=self._detection_confidence,
+                    max_num_hands=2,
+                    enhance_contrast=self.clahe_var.get(),
+                )
+
             self._detection_worker = DetectionWorker(
                 hand_detector=self._hand_detector,
                 save_callback=save_yolo_label,
                 log_callback=self._log,
             )
             self._detection_worker.start()
-            self._log("Hand detection worker started")
+            dtype = "YOLO" if self._detector_type == "yolo" else "MediaPipe"
+            self._log(f"Hand detection worker started ({dtype})")
             return True
         except Exception as e:
             self._log(f"Failed to init hand detection: {e}")
-            messagebox.showerror("Detection Error", f"Cannot initialize MediaPipe:\n{e}")
+            messagebox.showerror("Detection Error", f"Cannot initialize detector:\n{e}")
             self._detection_enabled = False
             self.detect_var.set(False)
             return False
@@ -489,7 +585,7 @@ class MainWindow:
 
         for filepath, class_id in items:
             try:
-                img = Image.open(filepath)
+                img = Image.open(filepath).copy()
                 self._detection_worker.enqueue(img, filepath, class_id)
             except Exception as e:
                 self._log(f"Re-detect: failed to load {os.path.basename(filepath)}: {e}")
@@ -612,6 +708,11 @@ class MainWindow:
         self.config["last_port"] = self.port_var.get()
         self.config["hand_detection_enabled"] = self._detection_enabled
         self.config["min_detection_confidence"] = self._detection_confidence
+        self.config["detector_type"] = self._detector_type
+        self._yolo_model_path = self.yolo_model_var.get().strip()
+        self.config["yolo_model_path"] = self._yolo_model_path
+        self.config["yolo_confidence"] = self.yolo_conf_var.get()
+        self.config["yolo_iou_threshold"] = self.yolo_iou_var.get()
         save_config(self.config)
 
         self._log(f'Capture session – class: "{c}", {duration}s, {w}×{h}')
@@ -809,6 +910,11 @@ class MainWindow:
             pass
         self.config["hand_detection_enabled"] = self._detection_enabled
         self.config["min_detection_confidence"] = self._detection_confidence
+        self.config["detector_type"] = self._detector_type
+        self._yolo_model_path = self.yolo_model_var.get().strip()
+        self.config["yolo_model_path"] = self._yolo_model_path
+        self.config["yolo_confidence"] = self.yolo_conf_var.get()
+        self.config["yolo_iou_threshold"] = self.yolo_iou_var.get()
         save_config(self.config)
 
         if self._detection_worker:

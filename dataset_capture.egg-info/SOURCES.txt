@@ -9,6 +9,7 @@ pyproject.toml
 review_window.py
 serial_handler.py
 utils.py
+yolo_detector.py
 dataset_capture.egg-info/PKG-INFO
 dataset_capture.egg-info/SOURCES.txt
 dataset_capture.egg-info/dependency_links.txt

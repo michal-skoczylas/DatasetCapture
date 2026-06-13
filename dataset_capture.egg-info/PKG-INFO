@@ -10,6 +10,7 @@ Requires-Dist: pyserial>=3.5
 Requires-Dist: Pillow>=10.0
 Requires-Dist: mediapipe>=0.10.18
 Requires-Dist: numpy>=1.24
+Requires-Dist: ultralytics>=8.0
 Dynamic: license-file
 
 # DatasetCapture

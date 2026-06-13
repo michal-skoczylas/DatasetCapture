@@ -16,6 +16,10 @@ DEFAULT_CONFIG = {
     "class_history": [],
     "hand_detection_enabled": False,
     "min_detection_confidence": 0.2,
+    "detector_type": "mediapipe",
+    "yolo_model_path": "",
+    "yolo_confidence": 0.3,
+    "yolo_iou_threshold": 0.5,
 }
 
 
