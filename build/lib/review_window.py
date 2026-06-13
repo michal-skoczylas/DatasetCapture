@@ -11,14 +11,15 @@ BBOX_COLORS = ["#FF0000", "#00FF00", "#0000FF", "#FFFF00", "#FF00FF", "#00FFFF"]
 
 
 class ReviewWindow(tk.Toplevel):
-    def __init__(self, parent, save_dir, classes):
+    def __init__(self, parent, base_dir, classes, initial_class=""):
         super().__init__(parent)
         self.title("Review Captured Images")
-        self.geometry(f"{CANVAS_SIZE[0] + 40}x{CANVAS_SIZE[1] + 140}")
+        self.geometry(f"{CANVAS_SIZE[0] + 40}x{CANVAS_SIZE[1] + 180}")
         self.resizable(False, False)
 
-        self._save_dir = save_dir
+        self._base_dir = base_dir
         self._classes = classes
+        self._dir_classes = []
         self._all_images = []
         self._images = []
         self._current_idx = 0
@@ -26,6 +27,7 @@ class ReviewWindow(tk.Toplevel):
         self._padding = 10
         self._filter_annotated = "all"
         self._filter_class = -1
+        self._initial_class = initial_class
 
         self._cached_photo = None
         self._cached_labels = []
@@ -41,15 +43,29 @@ class ReviewWindow(tk.Toplevel):
         self._build_ui()
         self._show_image(0)
 
+        if self._initial_class:
+            self._apply_initial_filter()
+
         self.bind("<Left>", lambda e: self._prev())
         self.bind("<Right>", lambda e: self._next())
         self.bind("<Escape>", lambda e: self.destroy())
 
+    def _apply_initial_filter(self):
+        if self._initial_class in self._dir_classes:
+            self.class_filter_combo.set(self._initial_class)
+            self._on_filter_change()
+
     def _scan_images(self):
-        if not os.path.isdir(self._save_dir):
+        if not os.path.isdir(self._base_dir):
             return
 
-        files = [f for f in os.listdir(self._save_dir) if f.endswith(".jpg")]
+        dir_classes_set = set()
+        all_items = []
+
+        try:
+            entries = sorted(os.listdir(self._base_dir))
+        except OSError:
+            return
 
         def sort_key(fname):
             try:
@@ -57,20 +73,36 @@ class ReviewWindow(tk.Toplevel):
             except ValueError:
                 return (1, fname)
 
-        files.sort(key=sort_key)
+        for entry in entries:
+            if entry.startswith("."):
+                continue
+            subdir = os.path.join(self._base_dir, entry)
+            if not os.path.isdir(subdir):
+                continue
 
-        self._all_images = []
-        for fname in files:
-            txt_path = os.path.join(self._save_dir, os.path.splitext(fname)[0] + ".txt")
-            labels = load_yolo_labels(txt_path)
-            annotated = len(labels) > 0
-            class_ids = set(label["class_id"] for label in labels)
-            self._all_images.append({
-                "filename": fname,
-                "annotated": annotated,
-                "class_ids": class_ids,
-            })
+            jpgs = [f for f in os.listdir(subdir) if f.endswith(".jpg")]
+            if not jpgs:
+                continue
 
+            dir_classes_set.add(entry)
+            jpgs.sort(key=sort_key)
+
+            for fname in jpgs:
+                filepath = os.path.join(subdir, fname)
+                txt_path = os.path.splitext(filepath)[0] + ".txt"
+                labels = load_yolo_labels(txt_path)
+                annotated = len(labels) > 0
+                class_ids = set(label["class_id"] for label in labels)
+                all_items.append({
+                    "filepath": filepath,
+                    "filename": fname,
+                    "class_name": entry,
+                    "annotated": annotated,
+                    "class_ids": class_ids,
+                })
+
+        self._dir_classes = sorted(dir_classes_set, key=str.lower)
+        self._all_images = all_items
         self._apply_filters()
 
     def _apply_filters(self):
@@ -80,9 +112,15 @@ class ReviewWindow(tk.Toplevel):
                 continue
             if self._filter_annotated == "unannotated" and item["annotated"]:
                 continue
-            if self._filter_class >= 0 and self._filter_class not in item["class_ids"]:
-                continue
-            self._images.append(item["filename"])
+            if self._filter_class >= 0:
+                cls_name = (
+                    self._dir_classes[self._filter_class]
+                    if self._filter_class < len(self._dir_classes)
+                    else ""
+                )
+                if item["class_name"] != cls_name:
+                    continue
+            self._images.append(item)
 
     def _show_empty(self):
         frame = ttk.Frame(self, padding=20)
@@ -99,12 +137,73 @@ class ReviewWindow(tk.Toplevel):
             self._show_image(idx)
 
     def _update_slider(self):
-        self.image_slider.config(to=max(1, len(self._images)))
+        self.image_slider.config(state=tk.NORMAL, to=max(1, len(self._images)))
         self.image_slider.set(self._current_idx + 1)
+
+    def _on_filter_change(self, event=None):
+        selected = self.filter_combo.get()
+        if selected == "Annotated":
+            self._filter_annotated = "annotated"
+        elif selected == "Unannotated":
+            self._filter_annotated = "unannotated"
+        else:
+            self._filter_annotated = "all"
+
+        cls = self.class_filter_combo.get()
+        if cls == "All classes":
+            self._filter_class = -1
+        else:
+            try:
+                self._filter_class = self._dir_classes.index(cls)
+            except ValueError:
+                self._filter_class = -1
+
+        self._apply_filters()
+
+        if not self._images:
+            self._show_filtered_empty()
+        else:
+            self._current_idx = 0
+            self._show_image(0)
+
+    def _show_filtered_empty(self):
+        self.canvas.delete("all")
+        self.canvas.create_text(
+            CANVAS_SIZE[0] // 2, CANVAS_SIZE[1] // 2,
+            text="No images matching filter", fill="#888888",
+            font=("Helvetica", 14)
+        )
+        self.counter_var.set("No images matching filter")
+        self.prev_btn.config(state=tk.DISABLED)
+        self.next_btn.config(state=tk.DISABLED)
+        self.image_slider.config(state=tk.DISABLED)
 
     def _build_ui(self):
         main = ttk.Frame(self, padding=10)
         main.pack(fill=tk.BOTH, expand=True)
+
+        filter_frame = ttk.Frame(main)
+        filter_frame.pack(fill=tk.X, pady=(0, 8))
+
+        ttk.Label(filter_frame, text="Filter:").pack(side=tk.LEFT)
+        self.filter_combo = ttk.Combobox(
+            filter_frame, values=["All", "Annotated", "Unannotated"],
+            state="readonly", width=14
+        )
+        self.filter_combo.set("All")
+        self.filter_combo.pack(side=tk.LEFT, padx=(8, 4))
+        self.filter_combo.bind("<<ComboboxSelected>>", self._on_filter_change)
+
+        class_values = ["All classes"] + self._dir_classes
+        self.class_filter_combo = ttk.Combobox(
+            filter_frame, values=class_values,
+            state="readonly", width=16
+        )
+        self.class_filter_combo.set("All classes")
+        self.class_filter_combo.pack(side=tk.LEFT, padx=(4, 0))
+        self.class_filter_combo.bind("<<ComboboxSelected>>", self._on_filter_change)
+        if not self._dir_classes:
+            self.class_filter_combo.config(state=tk.DISABLED)
 
         self.canvas = tk.Canvas(
             main, width=CANVAS_SIZE[0], height=CANVAS_SIZE[1],
@@ -159,8 +258,9 @@ class ReviewWindow(tk.Toplevel):
             return
 
         self._current_idx = idx
-        filename = self._images[idx]
-        filepath = os.path.join(self._save_dir, filename)
+        item = self._images[idx]
+        filepath = item["filepath"]
+        filename = item["filename"]
 
         try:
             img = Image.open(filepath)

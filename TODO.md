@@ -1,76 +1,51 @@
 # TODO — Review Window: slider & filters
 
-## Steps
+Wszystkie kroki zakończone. Nowy układ `review_window.py`:
 
-### [x] Step 1 — Enhance `_scan_images()` + `_apply_filters()`
-- `_scan_images()` czyta pliki `.txt`, buduje listę `_all_images` z metadanymi (`filename`, `annotated`, `class_ids`)
-- Nowa metoda `_apply_filters()` filtruje `_all_images` → `_images` wg `_filter_annotated` i `_filter_class`
-- Domyślnie oba filtry = `"all"` / `-1`, więc zachowanie identyczne jak przed zmianą
-
-### [ ] Step 2 — Slider nawigacji
-- Dodać `ttk.Scale` między canvas a padding slider
-- `from_=1`, `to=len(self._images)`, `command=self._on_slider_move`
-- `_on_slider_move(value)` → `int(float(value)) - 1` → `_show_image(idx)` (tylko jeśli indeks się zmienił)
-- `_show_image()` na końcu aktualizuje pozycję slidera: `self.slider.set(idx + 1)`
-- Nowa metoda `_update_slider()`: `config(to=...)` + `set(current_idx + 1)`
-
-### [ ] Step 3 — Filtry UI (annotation + class)
-- Nowy `ttk.Frame` nad canvas z dwoma `ttk.Combobox` (readonly):
-  - **Annotation**: `["All", "Annotated", "Unannotated"]`, domyślnie `"All"`
-  - **Class**: `["All classes"] + self._classes`, domyślnie `"All classes"`
-- Gdy `self._classes` jest pusty — class combobox disabled
-
-### [ ] Step 4 — Podłączenie filtrów
-- `_on_filter_change()` — odczytuje wartości z comboboxów:
-  - annotation: `"all"` / `"annotated"` / `"unannotated"`
-  - class: `-1` (All classes) lub indeks z listy klas
-- Wywołuje `_apply_filters()`, potem `_show_image(0)` jeśli są wyniki, lub `_show_empty_filtered()`
-
-### [ ] Step 5 — Geometry i polish
-- Zwiększyć height okna: `140` → `220` (dodatkowe ~80px na filtr + slider)
-- `_show_empty()` zmienić na `_show_empty_filtered()` — inny komunikat gdy filtry nie zwracają wyników
-- Slider przy jednym obrazku: zakres 1..1, nieruchomy
+```
+Filter: [All ▼]  [All classes ▼]
+┌───────────────────────────────────┐
+│          Canvas 640×480           │
+└───────────────────────────────────┘
+Image: ─────────○──────────────────
+Padding: ─────○────── 10 px
+[← Prev]  Image 1/5  [Next →] [Close]
+```
 
 ---
 
-## Jak testować
+## Nowe funkcje
 
-### Testowanie logiki filtrów (bez GUI):
-```bash
-python3 -c "
-import os, tempfile, sys
-sys.path.insert(0, '.')
-from utils import save_yolo_label
-from PIL import Image
+### Slider nawigacji
+- `ttk.Scale` "Image:" — przeciąganie zmienia obrazek, kliknięcie skacze do pozycji
+- Synchronizuje się z Prev/Next i strzałkami ← →
+- Przy 1 obrazku nieruchomy, przy braku wyników — disabled
 
-tmpdir = tempfile.mkdtemp()
-for i in range(5):
-    img = Image.new('L', (100, 100))
-    img.save(os.path.join(tmpdir, f'{i:04d}.jpg'))
+### Filtry
+- **Annotation**: All / Annotated / Unannotated
+- **Class**: All classes + lista z `classes.txt`
+- Po zmianie filtra: pokazuje 1-szy obrazek z wyników lub komunikat "No images matching filter"
+- Class combobox disabled gdy brak `classes.txt`
 
-save_yolo_label(os.path.join(tmpdir, '0000.jpg'), [{'x1':0.1,'x2':0.3,'y1':0.1,'y2':0.3}], class_id=0)
-save_yolo_label(os.path.join(tmpdir, '0002.jpg'), [{'x1':0.2,'x2':0.4,'y1':0.2,'y2':0.4}], class_id=1)
+### Logika wewnętrzna
+- `_all_images` — pełna lista z metadanymi (filename, annotated, class_ids)
+- `_apply_filters()` — filtruje wg `_filter_annotated` / `_filter_class`
+- `_images` — przefiltrowana lista nazw plików
 
-from review_window import ReviewWindow  # sprawdza import + składnię
-print('Import OK')
-import shutil; shutil.rmtree(tmpdir)
-"
-```
+---
 
-### Testowanie całości (GUI):
-1. Uruchom aplikację: `python main.py`
-2. Wybierz katalog ze zdjęciami (musi zawierać `.jpg` i opcjonalnie `.txt`)
-3. Kliknij **Review**
-4. Sprawdź:
-   - Slider przesuwa się między obrazkami
-   - Przeciągnięcie slidera zmienia obrazek
-   - Filtry annotation/class działają:
-     - "Annotated" pokazuje tylko zdjęcia z `.txt`
-     - "Unannotated" pokazuje tylko zdjęcia bez `.txt`
-     - "All" pokazuje wszystkie
-     - Class filter pokazuje tylko zdjęcia z daną klasą w labelach
+## Jak testować (GUI)
 
-### Testowanie skrajnych przypadków:
-- Pusty katalog → komunikat "No images to review"
-- Wszystkie zdjęcia bez `.txt` + filtr "Annotated" → "No images matching filter"
-- 1 zdjęcie → slider nieruchomy, Prev/Next disabled
+1. `python main.py` → Browse → katalog ze zdjęciami z `.txt` i bez
+2. Kliknij Review
+
+Sprawdź:
+- [ ] Slider Image: przesuwa obrazki, synchronizuje się z Prev/Next
+- [ ] Filtr Annotated: pokazuje tylko zdjęcia z bounding boxami
+- [ ] Filtr Unannotated: pokazuje tylko zdjęcia bez labeli
+- [ ] Filtr Class: filtruje po konkretnej klasie
+- [ ] Kombinacje filtrów (np. Annotated + konkretna klasa)
+- [ ] Filtr dający 0 wyników → komunikat "No images matching filter"
+- [ ] Powrót do "All" → przywraca wszystkie obrazki
+- [ ] 1 obrazek → slider nieruchomy, Prev/Next disabled
+- [ ] Pusty katalog → "No images to review"

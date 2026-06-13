@@ -399,13 +399,26 @@ class MainWindow:
 
     def _update_review_btn(self):
         d = self.dir_var.get().strip()
+        if not d or not os.path.isdir(d):
+            self.review_btn.config(state=tk.DISABLED)
+            return
+        has_images = False
         c = self.class_var.get().strip()
-        path = os.path.join(d, c) if c else d
-        has_images = (
-            path
-            and os.path.isdir(path)
-            and any(f.endswith(".jpg") for f in os.listdir(path))
-        )
+        if c:
+            path = os.path.join(d, c)
+            has_images = os.path.isdir(path) and any(
+                f.endswith(".jpg") for f in os.listdir(path)
+            )
+        else:
+            try:
+                for entry in os.listdir(d):
+                    entry_path = os.path.join(d, entry)
+                    if not entry.startswith(".") and os.path.isdir(entry_path):
+                        if any(f.endswith(".jpg") for f in os.listdir(entry_path)):
+                            has_images = True
+                            break
+            except OSError:
+                pass
         self.review_btn.config(state=tk.NORMAL if has_images else tk.DISABLED)
 
     def _toggle_connect(self):
@@ -561,18 +574,16 @@ class MainWindow:
 
     def _open_review(self):
         d = self.dir_var.get().strip()
-        c = self.class_var.get().strip()
-        save_dir = os.path.join(d, c) if c else d
-        if not save_dir or not os.path.isdir(save_dir):
+        if not d or not os.path.isdir(d):
             return
-        base_dir = d
-        classes = load_classes_txt(base_dir)
+        initial_class = self.class_var.get().strip()
+        classes = load_classes_txt(d)
         if self._review_window is not None:
             try:
                 self._review_window.destroy()
             except Exception:
                 pass
-        self._review_window = ReviewWindow(self.root, save_dir, classes)
+        self._review_window = ReviewWindow(self.root, d, classes, initial_class=initial_class)
 
     def stop_capture(self):
         if self._countdown_after_id:
