@@ -75,6 +75,8 @@ class MainWindow:
         self._detection_class_id = 0
         self._review_window = None
         self._redetect_after_id = None
+        self._detection_progress_after_id = None
+        self._pending_detection = []
 
         self._detector_type = "mediapipe"
         self._yolo_model_path = ""
@@ -582,6 +584,8 @@ class MainWindow:
 
         self.redetect_status_var.set(f"Re-detect: 0/{len(items)}")
         self.redetect_btn.config(state=tk.DISABLED)
+        self.progress_var.set(0)
+        self.time_var.set(f"Detecting: 0/{len(items)}")
 
         for filepath, class_id in items:
             try:
@@ -603,6 +607,8 @@ class MainWindow:
             return
 
         processed = total - remaining
+        self.progress_var.set((processed / total) * 100 if total > 0 else 0)
+        self.time_var.set(f"Detecting: {processed}/{total}")
         if remaining > 0:
             self.redetect_status_var.set(f"Re-detect: {processed}/{total}")
             self._redetect_after_id = self.root.after(
@@ -612,10 +618,68 @@ class MainWindow:
             self.redetect_status_var.set(
                 f"Re-detect done ({processed} images, {self._detection_worker.failed} failed)"
             )
+            self.progress_var.set(100)
+            self.time_var.set(f"Detection done ({processed})")
             self._redetect_after_id = None
             self._update_review_btn()
             self._log(
                 f"Re-detect finished: {self._detection_worker.processed} annotated, "
+                f"{self._detection_worker.failed} failed"
+            )
+
+    def _cancel_detection_polling(self):
+        if self._detection_progress_after_id:
+            self.root.after_cancel(self._detection_progress_after_id)
+            self._detection_progress_after_id = None
+        if self._redetect_after_id:
+            self.root.after_cancel(self._redetect_after_id)
+            self._redetect_after_id = None
+
+    def _start_post_capture_detection(self):
+        if not self._pending_detection:
+            return
+        if not self._init_detection():
+            return
+
+        total = len(self._pending_detection)
+        self._log(f"Post-capture detection: {total} images queued")
+
+        for filepath, class_id in self._pending_detection:
+            try:
+                img = Image.open(filepath).copy()
+                self._detection_worker.enqueue(img, filepath, class_id)
+            except Exception as e:
+                self._log(f"Detection: failed to load {os.path.basename(filepath)}: {e}")
+
+        self._pending_detection = []
+        self.progress_var.set(0)
+        self.time_var.set(f"Detecting: 0/{total}")
+        self._detection_progress_after_id = self.root.after(
+            500, self._poll_detection_progress, total
+        )
+
+    def _poll_detection_progress(self, total):
+        if not self._detection_worker:
+            self._detection_progress_after_id = None
+            self.time_var.set("Detection: worker stopped")
+            return
+
+        remaining = self._detection_worker.queue_size
+        processed = total - remaining
+        self.progress_var.set((processed / total) * 100 if total > 0 else 0)
+        self.time_var.set(f"Detecting: {processed}/{total}")
+
+        if remaining > 0 and self._detection_worker:
+            self._detection_progress_after_id = self.root.after(
+                500, self._poll_detection_progress, total
+            )
+        else:
+            self._detection_progress_after_id = None
+            self.time_var.set(f"Detection done ({processed})")
+            self._update_review_btn()
+            self._log(
+                f"Post-capture detection finished: "
+                f"{self._detection_worker.processed} annotated, "
                 f"{self._detection_worker.failed} failed"
             )
 
@@ -651,6 +715,8 @@ class MainWindow:
     def start_capture(self):
         if self.capturing:
             return
+
+        self._cancel_detection_polling()
 
         d = self.dir_var.get().strip()
         raw_class = self.class_var.get().strip()
@@ -689,9 +755,9 @@ class MainWindow:
         self.auto_resize = self.auto_resize_var.get()
         self.capture_next_idx = get_next_index(save_dir)
 
+        self._pending_detection = []
+
         if self._detection_enabled:
-            if not self._init_detection():
-                return
             entries = os.listdir(d) if os.path.isdir(d) else []
             subdirs = sorted(
                 [e for e in entries if not e.startswith(".") and os.path.isdir(os.path.join(d, e))],
@@ -812,9 +878,10 @@ class MainWindow:
 
         total = count_images(self.capture_save_dir)
         msg = f"Capture finished \u2013 {self.capture_count} saved ({total} total) in {self.capture_save_dir}"
-        if self._detection_worker:
-            msg += f", detection: {self._detection_worker.processed} labels ({self._detection_worker.queue_size} queued)"
         self._log(msg)
+
+        if self._pending_detection:
+            self._start_post_capture_detection()
 
     def stop_capture_or_disconnect(self):
         if self._countdown_after_id or self.capturing:
@@ -854,10 +921,10 @@ class MainWindow:
             filename = f"{self.capture_next_idx:04d}.jpg"
             filepath = os.path.join(self.capture_save_dir, filename)
 
-            if self._detection_enabled and self._detection_worker:
-                self._detection_worker.enqueue(saved.copy(), filepath, self._detection_class_id)
-
             saved.save(filepath, "JPEG", quality=JPEG_QUALITY)
+
+            if self._detection_enabled:
+                self._pending_detection.append((filepath, self._detection_class_id))
 
             self.capture_next_idx += 1
             self.capture_count += 1

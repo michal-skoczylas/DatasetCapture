@@ -10,10 +10,11 @@ from ultralytics import YOLO
 
 
 class YoloDetector:
-    def __init__(self, model_path, confidence=0.3, iou_threshold=0.5):
+    def __init__(self, model_path, confidence=0.3, iou_threshold=0.5, imgsz=640):
         self._model = YOLO(model_path, verbose=False)
         self._conf = confidence
         self._iou = iou_threshold
+        self._imgsz = imgsz
         self._class_names = ["OpenHand", "ClosedHand"]
 
     @property
@@ -22,7 +23,10 @@ class YoloDetector:
 
     def detect(self, pil_image):
         img = pil_image.convert("RGB") if pil_image.mode == "L" else pil_image
-        results = self._model(img, conf=self._conf, iou=self._iou, verbose=False)
+        results = self._model(
+            img, conf=self._conf, iou=self._iou,
+            imgsz=self._imgsz, verbose=False
+        )
 
         bboxes = []
         boxes = results[0].boxes
