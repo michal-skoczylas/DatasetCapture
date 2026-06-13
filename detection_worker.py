@@ -2,8 +2,6 @@ import os
 import queue
 import threading
 
-from PIL import Image
-
 
 class DetectionWorker:
     def __init__(self, hand_detector, save_callback, log_callback=None):
@@ -29,9 +27,9 @@ class DetectionWorker:
             self._thread.join(timeout=10.0)
             self._thread = None
 
-    def enqueue(self, image_path, class_id):
+    def enqueue(self, image, save_path, class_id):
         try:
-            self._queue.put_nowait((image_path, class_id))
+            self._queue.put_nowait((image, save_path, class_id))
         except queue.Full:
             self._log("Detection queue full, skipping frame")
 
@@ -50,23 +48,22 @@ class DetectionWorker:
     def _run(self):
         while self._running:
             try:
-                image_path, class_id = self._queue.get(timeout=0.5)
+                img, save_path, class_id = self._queue.get(timeout=0.5)
             except queue.Empty:
                 continue
 
             try:
-                img = Image.open(image_path)
                 bboxes = self._detector.detect(img)
 
                 if bboxes:
-                    self._save_callback(image_path, bboxes, class_id)
+                    self._save_callback(save_path, bboxes, class_id)
                     self._processed += 1
                 else:
-                    self._log(f"No hand detected in {os.path.basename(image_path)}")
+                    self._log(f"No hand detected in {os.path.basename(save_path)}")
                     self._failed += 1
 
             except Exception as e:
-                self._log(f"Detection error for {os.path.basename(image_path)}: {e}")
+                self._log(f"Detection error for {os.path.basename(save_path)}: {e}")
                 self._failed += 1
             finally:
                 self._queue.task_done()

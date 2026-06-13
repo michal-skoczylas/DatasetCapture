@@ -70,9 +70,10 @@ class MainWindow:
         self._hand_detector = None
         self._detection_worker = None
         self._detection_enabled = False
-        self._detection_confidence = 0.5
+        self._detection_confidence = 0.3
         self._detection_class_id = 0
         self._review_window = None
+        self._redetect_after_id = None
 
         self._build_ui()
         self._setup_listbox_hover()
@@ -209,11 +210,23 @@ class MainWindow:
             variable=self.detect_var, command=self._on_detection_toggle
         ).pack(side=tk.LEFT, padx=(0, 12))
         ttk.Label(r_det, text="Min conf:").pack(side=tk.LEFT)
-        self.detect_conf_var = tk.StringVar(value="0.5")
+        self.detect_conf_var = tk.StringVar(value="0.3")
         ttk.Combobox(
             r_det, textvariable=self.detect_conf_var, width=4,
             values=["0.3", "0.5", "0.7", "0.9"], state="readonly"
         ).pack(side=tk.LEFT)
+
+        r_redetect = ttk.Frame(frame)
+        r_redetect.pack(fill=tk.X, pady=(4, 0))
+        self.redetect_btn = ttk.Button(
+            r_redetect, text="Re-detect All",
+            command=self._redetect_all, state=tk.DISABLED
+        )
+        self.redetect_btn.pack(side=tk.LEFT)
+        self.redetect_status_var = tk.StringVar(value="")
+        ttk.Label(r_redetect, textvariable=self.redetect_status_var, foreground="#555").pack(
+            side=tk.LEFT, padx=10
+        )
 
         self.countdown_var = tk.StringVar(value="")
         self.countdown_label = ttk.Label(
@@ -277,12 +290,12 @@ class MainWindow:
         self.auto_resize_var.set(cfg.get("auto_resize", False))
         self.duration_var.set(str(cfg.get("last_duration", DEFAULT_DURATION)))
         self.detect_var.set(cfg.get("hand_detection_enabled", False))
-        self.detect_conf_var.set(str(cfg.get("min_detection_confidence", 0.5)))
+        self.detect_conf_var.set(str(cfg.get("min_detection_confidence", 0.3)))
         self._detection_enabled = cfg.get("hand_detection_enabled", False)
         try:
-            self._detection_confidence = float(cfg.get("min_detection_confidence", 0.5))
+            self._detection_confidence = float(cfg.get("min_detection_confidence", 0.3))
         except (ValueError, TypeError):
-            self._detection_confidence = 0.5
+            self._detection_confidence = 0.3
         self._refresh_ports()
         self._update_full_path()
 
@@ -335,7 +348,7 @@ class MainWindow:
             try:
                 self._detection_confidence = float(self.detect_conf_var.get())
             except ValueError:
-                self._detection_confidence = 0.5
+                self._detection_confidence = 0.3
 
     def _init_detection(self):
         if self._detection_worker is not None:
@@ -343,7 +356,7 @@ class MainWindow:
         try:
             self._detection_confidence = float(self.detect_conf_var.get())
         except ValueError:
-            self._detection_confidence = 0.5
+            self._detection_confidence = 0.3
         try:
             self._hand_detector = HandDetector(
                 min_detection_confidence=self._detection_confidence,
@@ -420,6 +433,90 @@ class MainWindow:
             except OSError:
                 pass
         self.review_btn.config(state=tk.NORMAL if has_images else tk.DISABLED)
+        self.redetect_btn.config(state=tk.NORMAL if has_images else tk.DISABLED)
+
+    def _scan_unannotated(self, base_dir):
+        items = []
+        try:
+            entries = os.listdir(base_dir)
+        except OSError:
+            return items
+
+        for entry in entries:
+            if entry.startswith("."):
+                continue
+            subdir = os.path.join(base_dir, entry)
+            if not os.path.isdir(subdir):
+                continue
+
+            class_id = get_class_id(base_dir, entry)
+
+            try:
+                files = os.listdir(subdir)
+            except OSError:
+                continue
+
+            for fname in files:
+                if not fname.endswith(".jpg"):
+                    continue
+                txt_name = os.path.splitext(fname)[0] + ".txt"
+                txt_path = os.path.join(subdir, txt_name)
+                if not os.path.isfile(txt_path):
+                    items.append((os.path.join(subdir, fname), class_id))
+
+        return items
+
+    def _redetect_all(self):
+        base_dir = self.dir_var.get().strip()
+        if not base_dir or not os.path.isdir(base_dir):
+            return
+
+        items = self._scan_unannotated(base_dir)
+        if not items:
+            messagebox.showinfo("Re-detect", "All images already annotated.")
+            return
+
+        if not self._init_detection():
+            return
+
+        self.redetect_status_var.set(f"Re-detect: 0/{len(items)}")
+        self.redetect_btn.config(state=tk.DISABLED)
+
+        for filepath, class_id in items:
+            try:
+                img = Image.open(filepath)
+                self._detection_worker.enqueue(img, filepath, class_id)
+            except Exception as e:
+                self._log(f"Re-detect: failed to load {os.path.basename(filepath)}: {e}")
+
+        self._log(f"Re-detect: queued {len(items)} images")
+        self._redetect_after_id = self.root.after(
+            500, self._poll_redetect_progress, len(items)
+        )
+
+    def _poll_redetect_progress(self, total):
+        remaining = self._detection_worker.queue_size if self._detection_worker else 0
+        if not self._detection_worker:
+            self.redetect_status_var.set("Re-detect: worker stopped")
+            self._update_review_btn()
+            return
+
+        processed = total - remaining
+        if remaining > 0:
+            self.redetect_status_var.set(f"Re-detect: {processed}/{total}")
+            self._redetect_after_id = self.root.after(
+                500, self._poll_redetect_progress, total
+            )
+        else:
+            self.redetect_status_var.set(
+                f"Re-detect done ({processed} images, {self._detection_worker.failed} failed)"
+            )
+            self._redetect_after_id = None
+            self._update_review_btn()
+            self._log(
+                f"Re-detect finished: {self._detection_worker.processed} annotated, "
+                f"{self._detection_worker.failed} failed"
+            )
 
     def _toggle_connect(self):
         if self.serial.connected:
@@ -517,6 +614,7 @@ class MainWindow:
         self.start_btn.config(state=tk.DISABLED)
         self.stop_btn.config(state=tk.NORMAL)
         self.duration_spin.config(state=tk.DISABLED)
+        self.redetect_btn.config(state=tk.DISABLED)
 
         self._do_countdown(3)
 
@@ -649,10 +747,11 @@ class MainWindow:
 
             filename = f"{self.capture_next_idx:04d}.jpg"
             filepath = os.path.join(self.capture_save_dir, filename)
-            saved.save(filepath, "JPEG", quality=JPEG_QUALITY)
 
             if self._detection_enabled and self._detection_worker:
-                self._detection_worker.enqueue(filepath, self._detection_class_id)
+                self._detection_worker.enqueue(saved.copy(), filepath, self._detection_class_id)
+
+            saved.save(filepath, "JPEG", quality=JPEG_QUALITY)
 
             self.capture_next_idx += 1
             self.capture_count += 1

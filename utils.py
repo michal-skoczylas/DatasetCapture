@@ -15,7 +15,7 @@ DEFAULT_CONFIG = {
     "last_duration": DEFAULT_DURATION,
     "class_history": [],
     "hand_detection_enabled": False,
-    "min_detection_confidence": 0.5,
+    "min_detection_confidence": 0.3,
 }
 
 
