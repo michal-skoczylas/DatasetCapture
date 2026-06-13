@@ -70,7 +70,7 @@ class MainWindow:
         self._hand_detector = None
         self._detection_worker = None
         self._detection_enabled = False
-        self._detection_confidence = 0.3
+        self._detection_confidence = 0.2
         self._detection_class_id = 0
         self._review_window = None
         self._redetect_after_id = None
@@ -210,10 +210,10 @@ class MainWindow:
             variable=self.detect_var, command=self._on_detection_toggle
         ).pack(side=tk.LEFT, padx=(0, 12))
         ttk.Label(r_det, text="Min conf:").pack(side=tk.LEFT)
-        self.detect_conf_var = tk.StringVar(value="0.3")
+        self.detect_conf_var = tk.StringVar(value="0.2")
         ttk.Combobox(
             r_det, textvariable=self.detect_conf_var, width=4,
-            values=["0.3", "0.5", "0.7", "0.9"], state="readonly"
+            values=["0.1", "0.2", "0.3", "0.5", "0.7"], state="readonly"
         ).pack(side=tk.LEFT)
         self.clahe_var = tk.BooleanVar(value=True)
         ttk.Checkbutton(
@@ -294,12 +294,12 @@ class MainWindow:
         self.auto_resize_var.set(cfg.get("auto_resize", False))
         self.duration_var.set(str(cfg.get("last_duration", DEFAULT_DURATION)))
         self.detect_var.set(cfg.get("hand_detection_enabled", False))
-        self.detect_conf_var.set(str(cfg.get("min_detection_confidence", 0.3)))
+        self.detect_conf_var.set(str(cfg.get("min_detection_confidence", 0.2)))
         self._detection_enabled = cfg.get("hand_detection_enabled", False)
         try:
-            self._detection_confidence = float(cfg.get("min_detection_confidence", 0.3))
+            self._detection_confidence = float(cfg.get("min_detection_confidence", 0.2))
         except (ValueError, TypeError):
-            self._detection_confidence = 0.3
+            self._detection_confidence = 0.2
         self._refresh_ports()
         self._update_full_path()
 
@@ -352,7 +352,7 @@ class MainWindow:
             try:
                 self._detection_confidence = float(self.detect_conf_var.get())
             except ValueError:
-                self._detection_confidence = 0.3
+                self._detection_confidence = 0.2
 
     def _init_detection(self):
         if self._detection_worker is not None:
@@ -360,7 +360,7 @@ class MainWindow:
         try:
             self._detection_confidence = float(self.detect_conf_var.get())
         except ValueError:
-            self._detection_confidence = 0.3
+            self._detection_confidence = 0.2
         try:
             self._hand_detector = HandDetector(
                 min_detection_confidence=self._detection_confidence,
