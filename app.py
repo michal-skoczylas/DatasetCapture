@@ -156,6 +156,9 @@ class MainWindow:
         self.class_combo.bind("<KeyRelease>", self._on_class_change)
         self.class_combo.bind("<<ComboboxSelected>>", self._on_class_change)
 
+        self.fix_txt_btn = ttk.Button(r4, text="Fix TXT Classes", command=self._fix_txt_classes, state=tk.DISABLED)
+        self.fix_txt_btn.pack(side=tk.LEFT, padx=(5, 0))
+
         r5 = ttk.Frame(frame)
         r5.pack(fill=tk.X, pady=(0, 8))
         self.path_preview_var = tk.StringVar(value="→ (select directory and class)")
@@ -516,7 +519,12 @@ class MainWindow:
     def _update_review_btn(self):
         d = self.dir_var.get().strip()
         if not d or not os.path.isdir(d):
-            self.review_btn.config(state=tk.DISABLED)
+            if hasattr(self, 'review_btn'):
+                self.review_btn.config(state=tk.DISABLED)
+            if hasattr(self, 'redetect_btn'):
+                self.redetect_btn.config(state=tk.DISABLED)
+            if hasattr(self, 'fix_txt_btn'):
+                self.fix_txt_btn.config(state=tk.DISABLED)
             return
         has_images = False
         c = self.class_var.get().strip()
@@ -525,7 +533,11 @@ class MainWindow:
             has_images = os.path.isdir(path) and any(
                 f.endswith(".jpg") for f in os.listdir(path)
             )
+            if hasattr(self, 'fix_txt_btn'):
+                self.fix_txt_btn.config(state=tk.NORMAL if os.path.isdir(path) else tk.DISABLED)
         else:
+            if hasattr(self, 'fix_txt_btn'):
+                self.fix_txt_btn.config(state=tk.DISABLED)
             try:
                 for entry in os.listdir(d):
                     entry_path = os.path.join(d, entry)
@@ -535,8 +547,58 @@ class MainWindow:
                             break
             except OSError:
                 pass
-        self.review_btn.config(state=tk.NORMAL if has_images else tk.DISABLED)
-        self.redetect_btn.config(state=tk.NORMAL if has_images else tk.DISABLED)
+        if hasattr(self, 'review_btn'):
+            self.review_btn.config(state=tk.NORMAL if has_images else tk.DISABLED)
+        if hasattr(self, 'redetect_btn'):
+            self.redetect_btn.config(state=tk.NORMAL if has_images else tk.DISABLED)
+
+    def _fix_txt_classes(self):
+        d = self.dir_var.get().strip()
+        c = self.class_var.get().strip()
+        if not d or not c:
+            return
+        
+        target_dir = os.path.join(d, c)
+        if not os.path.isdir(target_dir):
+            messagebox.showwarning("Warning", f"Directory {target_dir} does not exist.")
+            return
+
+        class_id = get_class_id(d, c)
+        if class_id is None:
+            messagebox.showwarning("Warning", f"Could not determine class ID for '{c}'. Ensure it exists in classes.txt.")
+            return
+
+        updated_count = 0
+        try:
+            for fname in os.listdir(target_dir):
+                if fname.endswith(".txt") and fname != "classes.txt":
+                    filepath = os.path.join(target_dir, fname)
+                    with open(filepath, "r") as f:
+                        lines = f.readlines()
+                    
+                    new_lines = []
+                    modified = False
+                    for line in lines:
+                        parts = line.strip().split()
+                        if len(parts) >= 5:
+                            old_id = parts[0]
+                            if old_id != str(class_id):
+                                parts[0] = str(class_id)
+                                modified = True
+                            new_lines.append(" ".join(parts) + "\n")
+                        else:
+                            new_lines.append(line)
+                            
+                    if modified:
+                        with open(filepath, "w") as f:
+                            f.writelines(new_lines)
+                        updated_count += 1
+                        
+            messagebox.showinfo("Success", f"Updated class ID to {class_id} in {updated_count} TXT files.")
+            self._log(f"Fixed TXT classes to ID {class_id} for {updated_count} files in {target_dir}")
+        except Exception as e:
+            self._log(f"Error fixing TXT classes: {e}")
+            messagebox.showerror("Error", f"Failed to update TXT files: {e}")
 
     def _scan_unannotated(self, base_dir):
         items = []
