@@ -1,7 +1,7 @@
 import os
 
 import tkinter as tk
-from tkinter import ttk
+from tkinter import ttk, messagebox
 from PIL import Image, ImageTk
 
 from utils import load_yolo_labels
@@ -24,7 +24,7 @@ class ReviewWindow(tk.Toplevel):
         self._images = []
         self._current_idx = 0
         self._photo = None
-        self._padding = 10
+        self._padding = 0
         self._filter_annotated = "all"
         self._filter_class = -1
         self._initial_class = initial_class
@@ -253,6 +253,11 @@ class ReviewWindow(tk.Toplevel):
         self.pad_scale.set(self._padding)
         ttk.Label(pad_row, textvariable=self.pad_label_var, width=8).pack(side=tk.LEFT)
 
+        self.apply_pad_btn = ttk.Button(
+            pad_row, text="Apply to All", command=self._apply_padding_to_files
+        )
+        self.apply_pad_btn.pack(side=tk.LEFT, padx=(10, 0))
+
     def _show_image(self, idx):
         if not self._images:
             return
@@ -335,6 +340,69 @@ class ReviewWindow(tk.Toplevel):
         self._padding = int(float(value))
         self.pad_label_var.set(f"{self._padding} px")
         self._redraw_bboxes()
+
+    def _apply_padding_to_files(self):
+        pad = self._padding
+        if pad == 0:
+            return
+
+        msg = f"This will permanently apply {pad}px padding to {len(self._images)} filtered images.\nAre you sure?"
+        if not messagebox.askyesno("Apply Padding", msg, parent=self):
+            return
+
+        for item in self._images:
+            filepath = item["filepath"]
+            txt_path = os.path.splitext(filepath)[0] + ".txt"
+            labels = load_yolo_labels(txt_path)
+            if not labels:
+                continue
+
+            try:
+                img = Image.open(filepath)
+                display_img = img.copy()
+                display_img.thumbnail(CANVAS_SIZE, Image.LANCZOS)
+                disp_w, disp_h = display_img.size
+            except Exception:
+                continue
+
+            lines = []
+            for label in labels:
+                cx = label["cx"]
+                cy = label["cy"]
+                bw = label["bw"]
+                bh = label["bh"]
+                class_id = label["class_id"]
+
+                x1 = cx - bw / 2.0
+                y1 = cy - bh / 2.0
+                x2 = cx + bw / 2.0
+                y2 = cy + bh / 2.0
+
+                x1 -= pad / disp_w
+                y1 -= pad / disp_h
+                x2 += pad / disp_w
+                y2 += pad / disp_h
+
+                x1 = max(0.0, min(1.0, x1))
+                x2 = max(0.0, min(1.0, x2))
+                y1 = max(0.0, min(1.0, y1))
+                y2 = max(0.0, min(1.0, y2))
+
+                new_cx = (x1 + x2) / 2.0
+                new_cy = (y1 + y2) / 2.0
+                new_bw = x2 - x1
+                new_bh = y2 - y1
+
+                lines.append(f"{class_id} {new_cx:.6f} {new_cy:.6f} {new_bw:.6f} {new_bh:.6f}")
+
+            with open(txt_path, "w") as f:
+                f.write("\n".join(lines) + "\n")
+
+        self._padding = 0
+        self.pad_scale.set(0)
+        self.pad_label_var.set("0 px")
+        self._show_image(self._current_idx)
+        messagebox.showinfo("Success", f"Padding applied to {len(self._images)} images.", parent=self)
 
     def _prev(self):
         if self._current_idx > 0:
