@@ -69,7 +69,9 @@ class ReviewWindow(tk.Toplevel):
 
         def sort_key(fname):
             try:
-                return (0, int(os.path.splitext(fname)[0]))
+                base = os.path.splitext(fname)[0]
+                idx_str = base.split("_")[0]
+                return (0, int(idx_str))
             except ValueError:
                 return (1, fname)
 

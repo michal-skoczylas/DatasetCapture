@@ -17,7 +17,7 @@ def main():
     root.after_idle(root.attributes, "-topmost", False)
 
     if sys.platform == "darwin":
-        os.system('''/usr/bin/osascript -e 'tell app "Finder" to set frontmost of process "Python" to true' ''')
+        os.system(f'''/usr/bin/osascript -e 'tell application "System Events" to set frontmost of the first process whose unix id is {os.getpid()} to true' ''')
 
     root.mainloop()
 

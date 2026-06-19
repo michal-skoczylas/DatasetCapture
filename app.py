@@ -162,7 +162,9 @@ class MainWindow:
         r5 = ttk.Frame(frame)
         r5.pack(fill=tk.X, pady=(0, 8))
         self.path_preview_var = tk.StringVar(value="→ (select directory and class)")
-        ttk.Label(r5, textvariable=self.path_preview_var, foreground="#555").pack(anchor=tk.W)
+        ttk.Label(r5, textvariable=self.path_preview_var, foreground="#555").pack(side=tk.LEFT)
+        self.class_count_var = tk.StringVar(value="")
+        ttk.Label(r5, textvariable=self.class_count_var, foreground="#007bff", font=("Helvetica", 10, "bold")).pack(side=tk.RIGHT)
 
         r6 = ttk.Frame(frame)
         r6.pack(fill=tk.X)
@@ -406,11 +408,11 @@ class MainWindow:
         ok = messagebox.askyesno(
             "Renumber Images",
             f"Found {count} images in:\n{full_path}\n\n"
-            f"Renumber them from 0000.jpg to {count - 1:04d}.jpg?"
+            f"Renumber them from 0000_{class_name}.jpg to {count - 1:04d}_{class_name}.jpg?"
         )
         if ok:
             renumber_images(full_path, start=0)
-            self._log(f"Renumbered {count} images in {full_path} (0000\u2013{count - 1:04d})")
+            self._log(f"Renumbered {count} images in {full_path} (0000_{class_name}\u2013{count - 1:04d}_{class_name})")
 
     def _on_detection_toggle(self):
         self._detection_enabled = self.detect_var.get()
@@ -511,10 +513,16 @@ class MainWindow:
         if d and c:
             full = os.path.join(d, c)
             self.path_preview_var.set(f"→ {full}/")
+            if hasattr(self, 'class_count_var'):
+                self.class_count_var.set(f"Total images: {count_images(full)}")
         elif d:
             self.path_preview_var.set(f"→ {d}/[class]")
+            if hasattr(self, 'class_count_var'):
+                self.class_count_var.set("")
         else:
             self.path_preview_var.set("→ (select directory and class)")
+            if hasattr(self, 'class_count_var'):
+                self.class_count_var.set("")
 
     def _update_review_btn(self):
         d = self.dir_var.get().strip()
@@ -941,6 +949,8 @@ class MainWindow:
         total = count_images(self.capture_save_dir)
         msg = f"Capture finished \u2013 {self.capture_count} saved ({total} total) in {self.capture_save_dir}"
         self._log(msg)
+        
+        self._update_full_path()
 
         if self._pending_detection:
             self._start_post_capture_detection()
@@ -980,7 +990,8 @@ class MainWindow:
                 else:
                     self._log(f"⚠ Frame {self.capture_w}×{self.capture_h} ≠ sensor {FRAME_WIDTH}×{FRAME_HEIGHT}")
 
-            filename = f"{self.capture_next_idx:04d}.jpg"
+            class_name = os.path.basename(os.path.normpath(self.capture_save_dir))
+            filename = f"{self.capture_next_idx:04d}_{class_name}.jpg"
             filepath = os.path.join(self.capture_save_dir, filename)
 
             saved.save(filepath, "JPEG", quality=JPEG_QUALITY)

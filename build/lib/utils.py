@@ -52,7 +52,9 @@ def get_next_index(directory):
     for fname in os.listdir(directory):
         if fname.endswith(".jpg"):
             try:
-                idx = int(os.path.splitext(fname)[0])
+                base = os.path.splitext(fname)[0]
+                idx_str = base.split("_")[0]
+                idx = int(idx_str)
                 max_idx = max(max_idx, idx)
             except ValueError:
                 pass
@@ -96,9 +98,13 @@ def renumber_images(directory, start=0):
     if n == 0:
         return 0
 
+    class_name = os.path.basename(os.path.normpath(directory))
+
     def sort_key(fname):
         try:
-            return (0, int(os.path.splitext(fname)[0]))
+            base = os.path.splitext(fname)[0]
+            idx_str = base.split("_")[0]
+            return (0, int(idx_str))
         except ValueError:
             return (1, fname)
 
@@ -110,10 +116,20 @@ def renumber_images(directory, start=0):
         tmp_path = os.path.join(directory, f"{tmp_prefix}{i}.tmp")
         os.rename(old_path, tmp_path)
 
+        old_txt = os.path.join(directory, os.path.splitext(old_name)[0] + ".txt")
+        if os.path.isfile(old_txt):
+            os.rename(old_txt, os.path.join(directory, f"{tmp_prefix}{i}_txt.tmp"))
+
     for i in range(n):
         tmp_path = os.path.join(directory, f"{tmp_prefix}{i}.tmp")
-        new_path = os.path.join(directory, f"{start + i:04d}.jpg")
+        new_name = f"{start + i:04d}_{class_name}.jpg"
+        new_path = os.path.join(directory, new_name)
         os.rename(tmp_path, new_path)
+
+        tmp_txt = os.path.join(directory, f"{tmp_prefix}{i}_txt.tmp")
+        if os.path.isfile(tmp_txt):
+            new_txt = os.path.join(directory, f"{start + i:04d}_{class_name}.txt")
+            os.rename(tmp_txt, new_txt)
 
     for fname in os.listdir(directory):
         if fname.startswith(tmp_prefix) and fname.endswith(".tmp"):
