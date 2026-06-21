@@ -4,10 +4,11 @@ import threading
 
 
 class DetectionWorker:
-    def __init__(self, hand_detector, save_callback, log_callback=None):
+    def __init__(self, hand_detector, save_callback, log_callback=None, single_bbox=False):
         self._detector = hand_detector
         self._save_callback = save_callback
         self._log = log_callback or (lambda msg: None)
+        self._single_bbox = single_bbox
         self._queue = queue.Queue(maxsize=500)
         self._thread = None
         self._running = False
@@ -30,8 +31,10 @@ class DetectionWorker:
     def enqueue(self, image, save_path, class_id):
         try:
             self._queue.put_nowait((image, save_path, class_id))
+            return True
         except queue.Full:
             self._log("Detection queue full, skipping frame")
+            return False
 
     @property
     def queue_size(self):
@@ -54,6 +57,10 @@ class DetectionWorker:
 
             try:
                 bboxes = self._detector.detect(img)
+                
+                if bboxes and self._single_bbox and len(bboxes) > 1:
+                    bboxes.sort(key=lambda b: b.get("confidence", 0.0), reverse=True)
+                    bboxes = [bboxes[0]]
 
                 if bboxes:
                     self._save_callback(save_path, bboxes, class_id)

@@ -47,8 +47,8 @@ class MainWindow:
     def __init__(self, root):
         self.root = root
         self.root.title("Dataset Capture Tool")
-        self.root.geometry("800x680")
-        self.root.minsize(720, 560)
+        self.root.geometry("800x820")
+        self.root.minsize(720, 720)
         self.root.configure(bg="#f0f0f0")
 
         self.config = load_config()
@@ -104,6 +104,7 @@ class MainWindow:
 
         self._build_settings(top)
         self._build_preview(top)
+        self._build_summary(main)
         self._build_capture(main)
         self._build_log(main)
 
@@ -193,6 +194,77 @@ class MainWindow:
             fill="#555", font=("Helvetica", 14)
         )
 
+    def _build_summary(self, parent):
+        frame = ttk.LabelFrame(parent, text=" Dataset Summary ", padding=10)
+        frame.pack(fill=tk.X, pady=(0, 10))
+
+        tree_frame = ttk.Frame(frame)
+        tree_frame.pack(fill=tk.X, expand=True)
+
+        columns = ("class", "total", "annotated")
+        self.summary_tree = ttk.Treeview(tree_frame, columns=columns, show="headings", height=4)
+        self.summary_tree.heading("class", text="Class")
+        self.summary_tree.heading("total", text="Total Images")
+        self.summary_tree.heading("annotated", text="Recognized")
+        self.summary_tree.column("class", width=150)
+        self.summary_tree.column("total", width=100, anchor=tk.CENTER)
+        self.summary_tree.column("annotated", width=100, anchor=tk.CENTER)
+        self.summary_tree.pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+        scrollbar = ttk.Scrollbar(tree_frame, orient=tk.VERTICAL, command=self.summary_tree.yview)
+        self.summary_tree.configure(yscroll=scrollbar.set)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        btn_frame = ttk.Frame(frame)
+        btn_frame.pack(fill=tk.X, pady=(4, 0))
+        ttk.Button(btn_frame, text="Refresh Summary", command=self._refresh_summary).pack(side=tk.LEFT)
+
+    def _refresh_summary(self):
+        base_dir = self.dir_var.get().strip()
+        
+        for item in self.summary_tree.get_children():
+            self.summary_tree.delete(item)
+
+        if not base_dir or not os.path.isdir(base_dir):
+            return
+
+        try:
+            entries = os.listdir(base_dir)
+        except OSError:
+            return
+
+        subdirs = [
+            e for e in entries
+            if not e.startswith(".") and os.path.isdir(os.path.join(base_dir, e))
+        ]
+        subdirs.sort(key=str.lower)
+
+        total_all_images = 0
+        total_all_annotated = 0
+
+        for subdir in subdirs:
+            full_path = os.path.join(base_dir, subdir)
+            total_images = 0
+            annotated = 0
+            try:
+                files = os.listdir(full_path)
+                for f in files:
+                    if f.endswith(".jpg"):
+                        total_images += 1
+                        txt_name = os.path.splitext(f)[0] + ".txt"
+                        if os.path.isfile(os.path.join(full_path, txt_name)):
+                            annotated += 1
+                
+                self.summary_tree.insert("", tk.END, values=(subdir, total_images, annotated))
+                total_all_images += total_images
+                total_all_annotated += annotated
+            except OSError:
+                continue
+                
+        if subdirs:
+            self.summary_tree.insert("", tk.END, values=("TOTAL", total_all_images, total_all_annotated), tags=('total',))
+            self.summary_tree.tag_configure('total', background='#e0e0e0')
+
     def _build_capture(self, parent):
         frame = ttk.LabelFrame(parent, text=" Capture ", padding=10)
         frame.pack(fill=tk.X, pady=(0, 10))
@@ -230,6 +302,16 @@ class MainWindow:
         )
         self.detector_combo.pack(side=tk.LEFT, padx=(4, 0))
         self.detector_combo.bind("<<ComboboxSelected>>", self._on_detector_change)
+
+        self.single_bbox_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(
+            r_det, text="Single BBox only", variable=self.single_bbox_var
+        ).pack(side=tk.LEFT, padx=(12, 0))
+        
+        self.overwrite_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(
+            r_det, text="Overwrite existing TXT", variable=self.overwrite_var
+        ).pack(side=tk.LEFT, padx=(12, 0))
 
         self.r_mp_ctrl = ttk.Frame(frame)
         self.r_mp_ctrl.pack(fill=tk.X, pady=(4, 0))
@@ -280,8 +362,8 @@ class MainWindow:
         self.r_redetect = ttk.Frame(frame)
         self.r_redetect.pack(fill=tk.X, pady=(4, 0))
         self.redetect_btn = ttk.Button(
-            self.r_redetect, text="Re-detect All",
-            command=self._redetect_all, state=tk.DISABLED
+            self.r_redetect, text="Re-detect Selected Class",
+            command=self._redetect_class, state=tk.DISABLED
         )
         self.redetect_btn.pack(side=tk.LEFT)
         self.redetect_status_var = tk.StringVar(value="")
@@ -370,6 +452,7 @@ class MainWindow:
 
         self._refresh_ports()
         self._update_full_path()
+        self._refresh_summary()
 
     def _refresh_ports(self):
         ports = self.serial.list_ports()
@@ -473,6 +556,7 @@ class MainWindow:
                 hand_detector=self._hand_detector,
                 save_callback=save_yolo_label,
                 log_callback=self._log,
+                single_bbox=self.single_bbox_var.get(),
             )
             self._detection_worker.start()
             dtype = "YOLO" if self._detector_type == "yolo" else "MediaPipe"
@@ -498,6 +582,7 @@ class MainWindow:
             if c:
                 self._check_renumber(path, c)
             self._update_review_btn()
+            self._refresh_summary()
 
     def _on_class_change(self, *args):
         self._update_full_path()
@@ -608,45 +693,44 @@ class MainWindow:
             self._log(f"Error fixing TXT classes: {e}")
             messagebox.showerror("Error", f"Failed to update TXT files: {e}")
 
-    def _scan_unannotated(self, base_dir):
+    def _scan_class_images(self, base_dir, class_name):
         items = []
+        subdir = os.path.join(base_dir, class_name)
+        if not os.path.isdir(subdir):
+            return items
+
+        class_id = get_class_id(base_dir, class_name)
+        overwrite = self.overwrite_var.get()
+
         try:
-            entries = os.listdir(base_dir)
+            files = os.listdir(subdir)
         except OSError:
             return items
 
-        for entry in entries:
-            if entry.startswith("."):
-                continue
-            subdir = os.path.join(base_dir, entry)
-            if not os.path.isdir(subdir):
-                continue
-
-            class_id = get_class_id(base_dir, entry)
-
-            try:
-                files = os.listdir(subdir)
-            except OSError:
-                continue
-
-            for fname in files:
-                if not fname.endswith(".jpg"):
-                    continue
-                txt_name = os.path.splitext(fname)[0] + ".txt"
-                txt_path = os.path.join(subdir, txt_name)
-                if not os.path.isfile(txt_path):
-                    items.append((os.path.join(subdir, fname), class_id))
+        for fname in files:
+            if fname.endswith(".jpg"):
+                if not overwrite:
+                    txt_path = os.path.join(subdir, os.path.splitext(fname)[0] + ".txt")
+                    if os.path.isfile(txt_path):
+                        continue
+                items.append((os.path.join(subdir, fname), class_id))
 
         return items
 
-    def _redetect_all(self):
+    def _redetect_class(self):
         base_dir = self.dir_var.get().strip()
+        class_name = self.class_var.get().strip()
+        
         if not base_dir or not os.path.isdir(base_dir):
             return
+            
+        if not class_name:
+            messagebox.showwarning("Re-detect", "Please select a Class first.")
+            return
 
-        items = self._scan_unannotated(base_dir)
+        items = self._scan_class_images(base_dir, class_name)
         if not items:
-            messagebox.showinfo("Re-detect", "All images already annotated.")
+            messagebox.showinfo("Re-detect", f"No images found in class '{class_name}'.")
             return
 
         if not self._init_detection():
@@ -657,45 +741,57 @@ class MainWindow:
         self.progress_var.set(0)
         self.time_var.set(f"Detecting: 0/{len(items)}")
 
-        for filepath, class_id in items:
-            try:
-                img = Image.open(filepath).copy()
-                self._detection_worker.enqueue(img, filepath, class_id)
-            except Exception as e:
-                self._log(f"Re-detect: failed to load {os.path.basename(filepath)}: {e}")
+        self._redetect_items = items
+        self._redetect_total = len(items)
+        self._redetect_queued = 0
 
-        self._log(f"Re-detect: queued {len(items)} images")
+        self._log(f"Re-detect: starting for {len(items)} images")
         self._redetect_after_id = self.root.after(
-            500, self._poll_redetect_progress, len(items)
+            100, self._poll_redetect_progress
         )
 
-    def _poll_redetect_progress(self, total):
-        remaining = self._detection_worker.queue_size if self._detection_worker else 0
+    def _poll_redetect_progress(self):
         if not self._detection_worker:
             self.redetect_status_var.set("Re-detect: worker stopped")
             self._update_review_btn()
             return
 
-        processed = total - remaining
-        self.progress_var.set((processed / total) * 100 if total > 0 else 0)
-        self.time_var.set(f"Detecting: {processed}/{total}")
-        if remaining > 0:
-            self.redetect_status_var.set(f"Re-detect: {processed}/{total}")
+        while self._redetect_queued < self._redetect_total and self._detection_worker.queue_size < 400:
+            filepath, class_id = self._redetect_items[self._redetect_queued]
+            try:
+                img = Image.open(filepath).copy()
+                if self._detection_worker.enqueue(img, filepath, class_id):
+                    self._redetect_queued += 1
+                else:
+                    break
+            except Exception as e:
+                self._log(f"Re-detect: failed to load {os.path.basename(filepath)}: {e}")
+                self._redetect_queued += 1
+
+        remaining_in_queue = self._detection_worker.queue_size
+        completed = self._redetect_queued - remaining_in_queue
+
+        self.progress_var.set((completed / self._redetect_total) * 100 if self._redetect_total > 0 else 0)
+        self.time_var.set(f"Detecting: {completed}/{self._redetect_total}")
+
+        if self._redetect_queued < self._redetect_total or remaining_in_queue > 0:
+            self.redetect_status_var.set(f"Re-detect: {completed}/{self._redetect_total}")
             self._redetect_after_id = self.root.after(
-                500, self._poll_redetect_progress, total
+                100, self._poll_redetect_progress
             )
         else:
             self.redetect_status_var.set(
-                f"Re-detect done ({processed} images, {self._detection_worker.failed} failed)"
+                f"Re-detect done ({completed} images, {self._detection_worker.failed} failed)"
             )
             self.progress_var.set(100)
-            self.time_var.set(f"Detection done ({processed})")
+            self.time_var.set(f"Detection done ({completed})")
             self._redetect_after_id = None
             self._update_review_btn()
             self._log(
                 f"Re-detect finished: {self._detection_worker.processed} annotated, "
                 f"{self._detection_worker.failed} failed"
             )
+            self._refresh_summary()
 
     def _cancel_detection_polling(self):
         if self._detection_progress_after_id:
@@ -714,44 +810,55 @@ class MainWindow:
         total = len(self._pending_detection)
         self._log(f"Post-capture detection: {total} images queued")
 
-        for filepath, class_id in self._pending_detection:
-            try:
-                img = Image.open(filepath).copy()
-                self._detection_worker.enqueue(img, filepath, class_id)
-            except Exception as e:
-                self._log(f"Detection: failed to load {os.path.basename(filepath)}: {e}")
-
+        self._post_detect_items = self._pending_detection
+        self._post_detect_total = total
+        self._post_detect_queued = 0
         self._pending_detection = []
+
         self.progress_var.set(0)
         self.time_var.set(f"Detecting: 0/{total}")
         self._detection_progress_after_id = self.root.after(
-            500, self._poll_detection_progress, total
+            100, self._poll_detection_progress
         )
 
-    def _poll_detection_progress(self, total):
+    def _poll_detection_progress(self):
         if not self._detection_worker:
             self._detection_progress_after_id = None
             self.time_var.set("Detection: worker stopped")
             return
 
-        remaining = self._detection_worker.queue_size
-        processed = total - remaining
-        self.progress_var.set((processed / total) * 100 if total > 0 else 0)
-        self.time_var.set(f"Detecting: {processed}/{total}")
+        while self._post_detect_queued < self._post_detect_total and self._detection_worker.queue_size < 400:
+            filepath, class_id = self._post_detect_items[self._post_detect_queued]
+            try:
+                img = Image.open(filepath).copy()
+                if self._detection_worker.enqueue(img, filepath, class_id):
+                    self._post_detect_queued += 1
+                else:
+                    break
+            except Exception as e:
+                self._log(f"Detection: failed to load {os.path.basename(filepath)}: {e}")
+                self._post_detect_queued += 1
 
-        if remaining > 0 and self._detection_worker:
+        remaining = self._detection_worker.queue_size
+        completed = self._post_detect_queued - remaining
+
+        self.progress_var.set((completed / self._post_detect_total) * 100 if self._post_detect_total > 0 else 0)
+        self.time_var.set(f"Detecting: {completed}/{self._post_detect_total}")
+
+        if self._post_detect_queued < self._post_detect_total or remaining > 0:
             self._detection_progress_after_id = self.root.after(
-                500, self._poll_detection_progress, total
+                100, self._poll_detection_progress
             )
         else:
             self._detection_progress_after_id = None
-            self.time_var.set(f"Detection done ({processed})")
+            self.time_var.set(f"Detection done ({completed})")
             self._update_review_btn()
             self._log(
                 f"Post-capture detection finished: "
                 f"{self._detection_worker.processed} annotated, "
                 f"{self._detection_worker.failed} failed"
             )
+            self._refresh_summary()
 
     def _toggle_connect(self):
         if self.serial.connected:
@@ -954,6 +1061,8 @@ class MainWindow:
 
         if self._pending_detection:
             self._start_post_capture_detection()
+        else:
+            self._refresh_summary()
 
     def stop_capture_or_disconnect(self):
         if self._countdown_after_id or self.capturing:
